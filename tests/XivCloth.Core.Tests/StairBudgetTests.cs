@@ -52,7 +52,14 @@ public sealed class StairBudgetTests(ITestOutputHelper output)
         var definition=pattern.ToDefinition();var solver=new XpbdCloth(definition,new(){CollisionWorkLimit=budget});
         if(yaw!=0)solver.Reset(pattern.Positions.ToArray().Select(p=>Vector3.Transform(p,Quaternion.CreateFromAxisAngle(Vector3.UnitY,yaw))).ToArray());
         var scene=Stairs(yaw);var samples=new double[180];var accepted=0;var peak=0;XpbdAdvance last=default;
-        var initial=solver.Capture();solver.Advance(1d/60,scene);solver.Reset(initial.Positions);
+        var initial=solver.Capture();
+        // Warm every trajectory path (including late contacts) and tiered code
+        // before measuring steady-state allocation; one initial step is insufficient.
+        for(var warm=0;warm<2;warm++)
+        {
+            for(var frame=0;frame<samples.Length;frame++)solver.Advance(1d/60,scene);
+            solver.Reset(initial.Positions);
+        }
         // Free cloth can slide onto the lower landing by the final frame. Require
         // descent and bending during the trajectory, not one CPU-dependent final pose.
         var peakBend=0f;

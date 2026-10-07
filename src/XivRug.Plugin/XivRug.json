@@ -2,7 +2,7 @@
   "Author": "Johnneylee Jack Rollins",
   "Name": "XivRug (development)",
   "InternalName": "XivRug",
-  "AssemblyVersion": "0.0.1.1",
+  "AssemblyVersion": "0.0.1.2",
   "Punchline": "Independent depth-projected woven rug.",
   "Description": "Experimental live rug renderer with navmesh and collision-surface sampling. Terrain coverage and native UI ordering remain under development. No Ghostty dependency or character movement.",
   "ApplicableVersion": "any",

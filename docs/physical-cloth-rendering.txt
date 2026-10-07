@@ -1,0 +1,115 @@
+Physical cloth rendering boundary
+
+The experimental XivCloth.Core simulation is independent of XivSurface.Core,
+Dalamud and Ghostty. Its final XYZ/UV/index arrays can be copied into
+XivSurface.Core.IndexedClothPose. This render transport owns its data, validates
+bounded nondegenerate indexed geometry, and computes shared material normals.
+It does not carry or manufacture a GroundMinimum heightfield.
+
+ClothGpu.DrawIndexed uses a dedicated direct-position vertex shader and
+32-byte position/normal/UV layout. It draws through the same caller-owned
+NativeRugPipeline envelope, map/route/weave pixel shader and private fold-depth
+buffer lease as the existing renderer. The game's scene-depth texture remains
+read-only. The indexed shader does not clamp Y, lift, flutter or interpolate
+the cloth; positions accepted by physics reach projection unchanged.
+
+The existing ClothGpu.Draw remains the separate heightfield/contact-ceiling
+path. Adding DrawIndexed does not change the live rug's chosen solver or make
+the new renderer active. Its GPU resources are created lazily on first use.
+
+The plugin's LiveRug now has a default-inactive physical branch calling this
+entry point through BOTH existing render entry points. Its actual shared
+PhysicalClothPresentation adapter accepts only CaptureForFeet publications,
+not ordinary Capture. It retains exact accepted/inspected proxy references,
+scene generation and rest-material chart; it copies XYZ/UV/indices into the
+owned indexed pose on the framework side. The render callback allocates no
+geometry and never adds the old foot ceiling, lift or contact deformation.
+
+The owner must invalidate before every simulation/capture/reset/scene change.
+Plugin.Update does so before its first native capture, and RefreshRenderFeet
+does so BEFORE every late capture (including non-throwing missing/new-owner
+results). The future runtime controller must re-admit AFTER that real capture;
+returning a fresh legacy FootFrame never refreshes a physical publication.
+BeginObservation returns an observation-specific reference token; old work
+cannot replace a newer observation or invalidate its successful publication.
+LiveRug rejects obsolete observation tokens before any invalidation, and samples
+its validation clock only AFTER entering renderLock; queued callers cannot
+look like clock rollback simply because a draw checked time while they waited.
+It holds renderLock through publication validation and complete native GPU
+use. Render-time checks revalidate exact proxy references, zone, scene,
+bounded timestamp, and configured material shape/size. Expired/invalid frames
+stay hidden, without falling back to old heightfield geometry. The physical
+path also disables legacy character-pose assistance instead of moving feet to
+fit the cloth. Map/route/weave/native UI/depth composition remain shared.
+
+A cached, allocation-free predicate is checked again immediately before each
+CPU Draw call, AFTER potentially slow shader/device/depth creation, depth IPC
+and buffer uploads. It also gates optional wisps after their own preparation.
+Expiry refuses the submission while existing finally blocks restore native
+state and release COM leases. This does not claim GPU execution/display-time
+attestation. Injected-clock adapter tests cover a preparation interval crossing
+the deadline; no real D3D or visual acceptance is inferred from those tests.
+
+This is a compiled end-to-end rendering boundary, NOT an activated physics
+controller. SetPhysicalClothEnabled has no user command or persisted setting;
+no caller enables it yet. Actual terrain/provider admission, a physically
+meaningful calibrated foot model, cadence and runtime cost remain prerequisite
+work. Native foot reads are not GPU-pose attestation; the publication binding
+does not certify exact shoe meshes or unsampled nonlinear animation.
+
+Caller responsibilities before activation:
+
+* Resolve current, appropriate visible terrain and collider-side semantics.
+  A model filename, archive parse, scene-generation integer, or valid render
+  pose does not by itself prove this geometry is current support.
+* Establish whole-surface collision and current foot/body clearance. Finite
+  static-face tests are not dynamic footwear or cloth self-collision. The
+  optional AdvanceWithFeet API adds two measured-marker capsule proxies and
+  relative swept tests; it is not an exact rendered footwear mesh.
+* Bind a physical publication to the exact accepted foot identity, model
+  generation, sequence and observation time. A later FootFrame's fresh age
+  cannot authorize an older cloth pose merely because both are in the same
+  zone. Admit the unchanged cloth against the actual late capture before
+  publishing it for rendering, then retain bounded render freshness checks.
+  Do not add the legacy ContactCeiling, foot mask or lifted heightfield back
+  into DrawIndexed to hide a missed physical contact.
+* Handle zone/resource/pose discontinuities and stale physics publications.
+  Static terrain-window updates may use XpbdCloth.RebindScene to admit the
+  unchanged current surface without erasing momentum or fractional time.
+  Ordinary Advance still rejects a different generation. Rebinding is NOT a
+  moving-obstacle sweep or a substitute for checking current scene ownership.
+* Own the native render lifetime lock, map texture/depth leases, and valid
+  projection/style inputs through the entire draw. Restore the enclosing
+  pipeline even on failures. This class is not a general arbitrary-stage hook.
+* Render the accepted endpoint exactly. Several safe physics substeps do not
+  prove that a straight interpolation between their outer endpoints is safe.
+  Smoothing requires the actual certified trajectory or a separate proof.
+* Keep any visual refinement on the accepted surface. Adding shader movement
+  after collision would invalidate those contacts. Fine weave shading does
+  not require extra physical particles.
+
+Rest-pattern UVs describe physical undeformed material coordinates; they
+remain attached to fabric during the full 3-D motion. The pixel shader's
+circle/rounded outline, cartography and route field use that material chart.
+Do not substitute an unmapped square chart for a circular simulation mesh.
+
+Reproducible CPU-side integration gate:
+dotnet test tests/XivCloth.Rendering.Tests/XivCloth.Rendering.Tests.csproj -c Release
+
+This test moves actual circle/rounded-rectangle XPBD patterns, transfers their
+published geometry into the render pose, and checks the expanded GPU vertex
+list for exact XYZ, UV, shared-normal and ownership behavior. Surface Core
+tests additionally inspect compiled shader inputs and constant-buffer layout.
+Additional tests drive the actual shared compositor adapter with real
+CaptureForFeet results: failed or unbound captures, observation supersession,
+identity/scene changes, clock rollback, expiry and invalid material charts.
+These checks are not live D3D drawing, visual acceptance or collision-provider
+certification. The plugin still needs its runtime physics-controller integration.
+
+Optional real Surface foot-adapter gate (no live game API):
+dotnet test tests/XivCloth.FootAdapter.Tests/XivCloth.FootAdapter.Tests.csproj -c Release -p:SurfaceCoreProject=/absolute/path/to/src/XivSurface.Core/XivSurface.Core.csproj
+
+Terrain extraction/stream gate and optional installed-data fixture:
+see tools/XivSurface.TerrainProbe/README.txt. The stream retains real vertical
+faces and explicitly reports nearby unreviewed material. Its known-vanilla
+fixture assumption is not loaded replacement proof or general floor authority.

@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Compile only the real configuration sources. No plugin, hooks or game
+       services are instantiated; the core project gains no Dalamud dependency.
+       Use the same real interface/serializer assemblies as a plugin build. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <PlatformTarget>x64</PlatformTarget>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <OutputType>Exe</OutputType>
+    <NoWarn>$(NoWarn);xUnit1051</NoWarn>
+    <DalamudLibPath Condition="'$(DalamudLibPath)' == '' And '$(DALAMUD_HOME)' != ''">$(DALAMUD_HOME)/</DalamudLibPath>
+    <DalamudLibPath Condition="'$(DalamudLibPath)' == '' And '$(OS)' != 'Windows_NT'">$(HOME)/.xlcore/dalamud/Hooks/dev/</DalamudLibPath>
+    <DalamudLibPath Condition="'$(DalamudLibPath)' == '' And '$(OS)' == 'Windows_NT'">$(APPDATA)\XIVLauncher\addon\Hooks\dev\</DalamudLibPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="xunit.v3.mtp-off" Version="4.0.1" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
+    <ProjectReference Include="../../src/XivSurface.Core/XivSurface.Core.csproj" />
+    <Reference Include="Dalamud"><HintPath>$(DalamudLibPath)Dalamud.dll</HintPath></Reference>
+    <Reference Include="Newtonsoft.Json"><HintPath>$(DalamudLibPath)Newtonsoft.Json.dll</HintPath></Reference>
+    <Compile Include="../../src/XivRug.Plugin/Configuration.cs" Link="Configuration.cs" />
+    <Compile Include="../../src/XivRug.Plugin/LegacyConfiguration.cs" Link="LegacyConfiguration.cs" />
+    <Using Include="Xunit" />
+  </ItemGroup>
+</Project>

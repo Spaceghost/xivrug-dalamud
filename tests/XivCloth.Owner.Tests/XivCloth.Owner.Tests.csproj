@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject><OutputType>Exe</OutputType></PropertyGroup>
+ <ItemGroup>
+  <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+  <PackageReference Include="xunit.v3.mtp-off" Version="4.0.1" />
+  <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
+  <ProjectReference Include="../../src/XivCloth.Core/XivCloth.Core.csproj" />
+  <ProjectReference Include="../../src/XivSurface.Core/XivSurface.Core.csproj" />
+  <Compile Include="../../adapters/PhysicalClothPresentation.cs" />
+  <Compile Include="../../adapters/CalibratedFootSnapshotAdapter.cs" />
+  <Compile Include="../../adapters/CalibratedPlantSnapshotAdapter.cs" />
+  <Compile Include="../../adapters/FixtureSceneLease.cs" />
+  <Compile Include="../../adapters/PhysicalClothRuntime.cs" />
+  <Using Include="Xunit" />
+ </ItemGroup>
+</Project>

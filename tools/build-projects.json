@@ -1,0 +1,29 @@
+{
+  "repo": "Spaceghost/xivrug-dalamud",
+  "plugins": [
+    "src/XivRug.Plugin/XivRug.Plugin.csproj"
+  ],
+  "packages": [
+    {
+      "project": "XivRug.Plugin",
+      "manifest": "src/XivRug.Plugin/XivRug.json",
+      "installer": true,
+      "icon": "https://spacegho.st/mods/ffxiv/plugins/icons/xivrug.png",
+      "required": [
+        "XivSurface.Core.dll",
+        "XivSurface.Dalamud.dll",
+        "XivCloth.Core.dll",
+        "XivSurface.RenderedGeometry.dll"
+      ]
+    }
+  ],
+  "tests": [
+    "tests/XivCloth.Core.Tests/XivCloth.Core.Tests.csproj",
+    "tests/XivCloth.Owner.Tests/XivCloth.Owner.Tests.csproj",
+    "tests/XivCloth.Rendering.Tests/XivCloth.Rendering.Tests.csproj",
+    "tests/XivSurface.Core.Tests/XivSurface.Core.Tests.csproj",
+    "tests/XivCloth.FootAdapter.Tests/XivCloth.FootAdapter.Tests.csproj",
+    "tests/XivRug.Configuration.Tests/XivRug.Configuration.Tests.csproj",
+    "tests/XivRug.Terrain.Tests/XivRug.Terrain.Tests.csproj"
+  ]
+}

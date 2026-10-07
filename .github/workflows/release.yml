@@ -1,0 +1,31 @@
+name: Publish testing channel
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: testing-release
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.401'
+      - run: tools/fetch-dalamud.sh
+      - run: tools/build.sh --test --locked
+      - run: tools/package.sh
+      - name: Publish tested experimental packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh release view testing >/dev/null 2>&1; then
+            gh release upload testing release/* --clobber
+          else
+            gh release create testing release/* --target "$GITHUB_SHA" --prerelease --title 'Experimental testing builds' --notes-file docs/RELEASE.md
+          fi

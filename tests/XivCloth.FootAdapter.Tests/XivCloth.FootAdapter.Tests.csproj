@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+ <PropertyGroup><IsPackable>false</IsPackable><IsTestProject>true</IsTestProject><OutputType>Exe</OutputType><NoWarn>$(NoWarn);xUnit1051</NoWarn></PropertyGroup>
+ <Target Name="RequireActualFootSource" BeforeTargets="_CheckForInvalidConfigurationAndPlatform">
+  <Error Condition="'$(SurfaceCoreProject)' == '' Or !Exists('$(SurfaceCoreProject)')" Text="Set SurfaceCoreProject to the actual XivSurface.Core.csproj for this optional adapter gate." />
+ </Target>
+ <ItemGroup>
+  <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+  <PackageReference Include="xunit.v3.mtp-off" Version="4.0.1" />
+  <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
+  <ProjectReference Include="../../src/XivCloth.Core/XivCloth.Core.csproj" />
+  <ProjectReference Include="$(SurfaceCoreProject)" Condition="'$(SurfaceCoreProject)' != ''" />
+  <Compile Include="../../adapters/FootMarkerSnapshotAdapter.cs" Link="FootMarkerSnapshotAdapter.cs" />
+  <Compile Include="../../adapters/CalibratedFootSnapshotAdapter.cs" Link="CalibratedFootSnapshotAdapter.cs" />
+  <Using Include="Xunit" />
+ </ItemGroup>
+</Project>

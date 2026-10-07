@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <EmbeddedResource Include="Shaders/SurfaceDecal.dxbc" LogicalName="XivSurface.SurfaceDecal.dxbc" />
+    <EmbeddedResource Include="Shaders/LiveRug.dxbc" LogicalName="XivSurface.LiveRug.dxbc" />
+    <EmbeddedResource Include="Shaders/LiveRugVertex.dxbc" LogicalName="XivSurface.LiveRugVertex.dxbc" />
+    <EmbeddedResource Include="Shaders/ClothVertex.dxbc" LogicalName="XivSurface.ClothVertex.dxbc" />
+    <EmbeddedResource Include="Shaders/IndexedClothVertex.dxbc" LogicalName="XivSurface.IndexedClothVertex.dxbc" />
+    <EmbeddedResource Include="Shaders/ClothPixel.dxbc" LogicalName="XivSurface.ClothPixel.dxbc" />
+    <EmbeddedResource Include="Shaders/MusicVertex.dxbc" LogicalName="XivSurface.MusicVertex.dxbc" />
+    <EmbeddedResource Include="Shaders/MusicPixel.dxbc" LogicalName="XivSurface.MusicPixel.dxbc" />
+  </ItemGroup>
+</Project>

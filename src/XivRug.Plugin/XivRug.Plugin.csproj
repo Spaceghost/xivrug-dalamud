@@ -1,0 +1,26 @@
+<Project Sdk="Dalamud.NET.Sdk/15.0.0">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <AssemblyName Condition="'$(RugCompatibilityName)' == ''">XivRug</AssemblyName>
+    <AssemblyName Condition="'$(RugCompatibilityName)' == 'XivFloorMap'">XivFloorMap</AssemblyName>
+    <Version>0.0.1.1</Version>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RugCompatibilityName)' == 'XivFloorMap'">
+    <Name>XivRug (development compatibility build)</Name>
+    <Author>Johnneylee Jack Rollins</Author>
+    <Punchline>Depth-projected woven rug.</Punchline>
+    <Description>Live experimental rug compositor. Native UI ordering remains under development. No Ghostty dependency.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="TerraFX.Interop.Windows">
+      <HintPath>$(DalamudLibPath)TerraFX.Interop.Windows.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <ProjectReference Include="../XivSurface.Core/XivSurface.Core.csproj" />
+    <ProjectReference Include="../XivCloth.Core/XivCloth.Core.csproj" />
+    <ProjectReference Include="../XivSurface.RenderedGeometry/XivSurface.RenderedGeometry.csproj" />
+    <ProjectReference Include="../XivSurface.Dalamud/XivSurface.Dalamud.csproj" />
+    <Compile Include="../../adapters/PhysicalClothPresentation.cs" Link="Rendering/PhysicalClothPresentation.cs" />
+  </ItemGroup>
+</Project>

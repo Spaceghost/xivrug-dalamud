@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Optional cross-repository tests. Deliberately not in the default solution
+       or referenced by any runtime project. Pass PianoCoreProject explicitly. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <OutputType>Exe</OutputType>
+    <NoWarn>$(NoWarn);xUnit1051</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageReference Include="xunit.v3.mtp-off" Version="4.0.1" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.0" />
+    <ProjectReference Include="../../src/XivSurface.Core/XivSurface.Core.csproj" />
+    <ProjectReference Include="$(PianoCoreProject)" Condition="'$(PianoCoreProject)' != ''" />
+  </ItemGroup>
+  <ItemGroup><Using Include="Xunit" /></ItemGroup>
+  <Target Name="ValidatePianoCoreProject" BeforeTargets="CollectPackageReferences;PrepareForBuild;ResolveProjectReferences">
+    <Error Condition="'$(PianoCoreProject)' == ''"
+           Text="This optional integration suite requires PianoCoreProject. Pass -p:PianoCoreProject=PATH_TO_XivPiano.Core.csproj for the actual XivPiano producer; the default rug build does not require it." />
+    <Error Condition="'$(PianoCoreProject)' != '' and !Exists('$(PianoCoreProject)')"
+           Text="PianoCoreProject does not point to an existing project. Set it to the actual XivPiano.Core.csproj; no producer stub is used by this suite." />
+  </Target>
+</Project>

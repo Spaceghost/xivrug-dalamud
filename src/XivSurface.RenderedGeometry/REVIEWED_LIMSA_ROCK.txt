@@ -1,0 +1,84 @@
+Explicit known-vanilla Limsa rock DEV profile — reviewed2026-10-03
+
+Opt in with LimsaRockTerrainProfile.OptInKnownVanilla(). This does not change
+OptInKnownVanillaStairs(), auto-select a profile, or activate any runtime physics.
+The profile pins3MDLs and10MTRLs. Their exact paths/digests/culling-grid counts
+are in LimsaRockTerrainProfile.cs; the immutable fingerprint is:
+eece11c1f513e36abb91e9503ef327e99d49181fe8fc13c8d44499c2963c259f
+
+New tile0015:224988 reconstructed bytes,3authored LODs, inspected LOD0 Main only,
+22meshes,2146vertices,1943triangles,5culling grids0..4. No bones/shapes/model
+attributes; waving disabled. The terrain draw-path uint at submesh+8 is a
+camera-culling-grid index, not an attribute mask. Retain all material groups
+independently of camera view. This profile does not observe the live bound LOD.
+
+The exact reviewed bg.shpk SHA256 is
+9617282ff8a947ceecd11846a73fc1d5ec7782cf19fe22ec363cc6d3195375be
+(version0E01,DX11,56vertex/3850pixel shaders,no geometry/tessellation stages).
+Installed API15 Lumina SHA256/layout gate remains mandatory. Shader package
+parsing follows pinned Penumbra.GameData ec5548d7ab994de09e9538d021e37990730ab1a3
+Files/ShpkFile.cs, including version0E01's two pre-key node fields. Compiled
+shader disassembly used vkd3d-shader1.17. Material flags0xD do not request
+transparency, but that flag alone was NOT treated as opacity proof.
+
+All seven additional MTRLs select bg.shpk. Material-key changes were applied
+to the package's known static normal/normalmap/previous-transform scene and
+subview vectors, then resolved through the actual selector/alias table.
+For baseline nodes4,10,152,158, respectively:
+stem                          resolved nodes          G-buffer pixel shaders
+s1t0_b0_sbrk1_h                83,89,227,233            40,44,100,104
+s1t0_t1_grnd1a                 6,12,154,160             5,11,65,71
+s1t0_t1_grnd1a_bgs0            4,10,152,158             3,9,63,69
+s1t0_t1_wall1a                 118,124,262,268          51,55,111,115
+s1t0_t1_wall2a                 119,125,263,269          52,56,112,116
+s1t0_t1_wall2a_bgs0/bgs1       117,123,261,267          22,28,82,88
+All selected nodes also use depth VS004/PS000.
+
+Exact material-key overrides (all other package defaults retained):
+  b616dc5a=1df2985c: sbrk1_h,grnd1a,wall1a,wall2a
+  36f72d5f=6936709f: sbrk1_h
+  36f72d5f=9807bac4: wall1a,wall2a,wall2a_bgs0,wall2a_bgs1
+  4f4f0636=bd94649a: sbrk1_h,wall2a,wall2a_bgs0,wall2a_bgs1
+grnd1a_bgs0 has no material overrides. Package defaults in material-key order
+4f4f0636,b616dc5a,36f72d5f,a9a3ee25 are respectively
+7c6fa05b,669a451b,88a3965a,5d146a23. Values are numeric shader selectors, not
+guessed descriptive names. They do not themselves establish pixel visibility.
+
+The38exact selected shaders (13VS/25PS) were inspected. All25PS contain no
+discard or depth output. These are G-buffer/material passes; arbitrary output
+W channels must not be mislabeled alpha opacity. Example rock PS052 SHA256:
+54cff1902ea53aee5ff4f721c8735988e3325e0961d82c936c465a7e30eb6741
+It writes o2.w=1, while o0.w/o1.w/o3.w carry other material/lighting data.
+Static VS007 SHA256:
+7e702a1d75818755fdf012487806600f221c4f3618dd3b76a9746e7a686eb89e
+uses local XYZ with homogeneous1; its Position.W use follows completed
+SV_POSITION output. The earlier all56VS review showed W does not displace
+geometry; separate COLOR1-driven waving exists and parser rejects waving models.
+
+Scope: evidence for the intended STATIC OPAQUE known-vanilla profile, not all
+3850pixel shaders or a live shader receipt. Scene/subview/effect/dither/LOD
+selection remains unobserved. Hashes prove the inspected archive contents,
+not replacement bytes already loaded by the game. ResourceID/path/native
+bounds do not close that gap. Every result keeps AssumedKnownVanilla and
+LoadedContentVerified=false,AuthorizesWorldSupport=false,CoversAllSceneMaterials=false.
+
+Fixed actual-data regression: at XZ(-65.33346,-17.446589), surfaceY18.98386,
+tile0014mesh1triangle402,wall2a material,normalY~.9317. Rounded coordinates
+(-65.33,-17.45) instead give18.98575; do not interchange those measurements.
+Broad interest center(-65.5,19,-17.5),half(3,2,3) yields154triangles across
+0014/0015:46horizontal,13nearvertical,95sloped. Ten local materials are reviewed,
+so zero material omissions in THAT interest. The original stairs14/23 fixture
+still produces128reviewed triangles and4explicitly omitted stpv2_h triangles;
+the unreviewed keyed material was not silently added with these other families.
+Zero omissions is not complete-world evidence.
+
+The physical solver currently accepts at most128scene triangles. Do not
+truncate154faces or lower ground to fit. The fixed player-centered halfXZ2.5,
+halfY2 box contains122faces, but a runtime must validate its entire current AND
+proposed swept cloth/body-contact envelope stays in that domain. Rest radius
+or a convenient face count alone cannot authorize the smaller domain.
+
+No MDL/MTRL/SHPK/disassembly binaries are distributed. Synthetic profile tests
+contain independently authored triangles. Optional installed-file gate:
+tools/XivSurface.TerrainProbe --actual-rock <installed-sqpack-directory>.
+Build/test instructions are in that tool's README; no host-specific paths.

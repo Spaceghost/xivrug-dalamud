@@ -1,0 +1,7 @@
+**/bin/
+**/obj/
+artifacts/
+release/
+.dalamud/
+TestResults/
+.shader-build.*/

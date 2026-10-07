@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/XivCloth.Core/XivCloth.Core.csproj" />
+    <EmbeddedResource Include="../../src/XivCloth.Core/XpbdGeometry.cs" LogicalName="XivCloth.CostProbe.Source.XpbdGeometry.cs" />
+    <EmbeddedResource Include="../../src/XivCloth.Core/XpbdCloth.cs" LogicalName="XivCloth.CostProbe.Source.XpbdCloth.cs" />
+    <EmbeddedResource Include="../../src/XivCloth.Core/XpbdStepInputs.cs" LogicalName="XivCloth.CostProbe.Source.XpbdStepInputs.cs" />
+    <EmbeddedResource Include="../../src/XivCloth.Core/TriangleContacts.cs" LogicalName="XivCloth.CostProbe.Source.TriangleContacts.cs" />
+    <EmbeddedResource Include="../../src/XivCloth.Core/PrismBounds.cs" LogicalName="XivCloth.CostProbe.Source.PrismBounds.cs" />
+    <EmbeddedResource Include="../../src/XivCloth.Core/TriangleSweep.cs" LogicalName="XivCloth.CostProbe.Source.TriangleSweep.cs" />
+  </ItemGroup>
+</Project>

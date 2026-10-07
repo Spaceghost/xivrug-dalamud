@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks><TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Description>Bounded offline MDL extraction and explicitly assumed static-terrain candidates. No game hooks or Ghostty dependency.</Description>
+    <DalamudLibPath Condition="'$(DalamudLibPath)' == ''">$(MSBuildThisFileDirectory)../../.dalamud/</DalamudLibPath>
+    <_TerrainLuminaPath>$([System.IO.Path]::Combine('$(DalamudLibPath)', 'Lumina.dll'))</_TerrainLuminaPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="Lumina"><HintPath>$(_TerrainLuminaPath)</HintPath><Private>false</Private></Reference>
+    <InternalsVisibleTo Include="XivSurface.TerrainProbe" />
+  </ItemGroup>
+  <Target Name="ValidateReviewedTerrainLumina" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(_TerrainLuminaPath)')" Text="Set DalamudLibPath to the reviewed installed API15 reference directory containing Lumina.dll." />
+    <GetFileHash Files="$(_TerrainLuminaPath)" Algorithm="SHA256"><Output TaskParameter="Items" ItemName="_TerrainLuminaHash" /></GetFileHash>
+    <Error Condition="'%(_TerrainLuminaHash.FileHash)' != 'F2CDE58CCFDD9F51923000F0B6D9B35B59DFCA5E2C23E8BA5A06A14269A83CBB'"
+      Text="Lumina layout differs from the reviewed MDL parser. Review and test metadata layouts before changing the pinned reference digest." />
+  </Target>
+</Project>

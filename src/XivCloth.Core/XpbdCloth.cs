@@ -111,6 +111,9 @@ public sealed partial class XpbdCloth
         sweepTravel=new float[positions.Length];
         terrainQueries=new(definition.Faces.Length/3);
     }
+    // Allocation-free diagnostics for tests; does not expose mutable solver storage.
+    internal void CopyPositionsTo(Span<Vector3> destination)=>positions.AsSpan().CopyTo(destination);
+
     public XpbdFrame Capture()
     {
         if(checkingCommit)throw new InvalidOperationException("Commit predicates must not inspect an uncommitted pose.");

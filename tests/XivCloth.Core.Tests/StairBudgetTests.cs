@@ -53,6 +53,10 @@ public sealed class StairBudgetTests(ITestOutputHelper output)
         if(yaw!=0)solver.Reset(pattern.Positions.ToArray().Select(p=>Vector3.Transform(p,Quaternion.CreateFromAxisAngle(Vector3.UnitY,yaw))).ToArray());
         var scene=Stairs(yaw);var samples=new double[180];var accepted=0;var peak=0;XpbdAdvance last=default;
         var initial=solver.Capture();solver.Advance(1d/60,scene);solver.Reset(initial.Positions);
+        // Free cloth can slide onto the lower landing by the final frame. Require
+        // descent and bending during the trajectory, not one CPU-dependent final pose.
+        var peakBend=0f;
+        var samplesPose=new Vector3[definition.VertexCount];
         var before=GC.GetAllocatedBytesForCurrentThread();
         for(var frame=0;frame<samples.Length;frame++)
         {
@@ -61,6 +65,10 @@ public sealed class StairBudgetTests(ITestOutputHelper output)
             peak=Math.Max(peak,last.TrianglePairs+last.SweepNodes+last.BroadphaseNodes);
             if(last.Status!=XpbdStatus.Ready)break;
             accepted++;
+            var frameMin=float.PositiveInfinity;var frameMax=float.NegativeInfinity;
+            solver.CopyPositionsTo(samplesPose);
+            foreach(var point in samplesPose){frameMin=Math.Min(frameMin,point.Y);frameMax=Math.Max(frameMax,point.Y);}
+            peakBend=Math.Max(peakBend,frameMax-frameMin);
         }
         var allocated=GC.GetAllocatedBytesForCurrentThread()-before;
         var final=solver.Capture().Positions.ToArray();
@@ -71,7 +79,7 @@ public sealed class StairBudgetTests(ITestOutputHelper output)
         Assert.InRange(peak,0,budget);
         Assert.Equal(0,allocated);
         Assert.Equal(180,accepted);Assert.Equal(XpbdStatus.Ready,last.Status);
-        Assert.True(mean<.45f&&maximum-minimum>.1f,"The material must actually descend and bend, not remain frozen above the stairs.");
+        Assert.True(mean<.45f&&peakBend>.1f,"The material must descend and bend during its trajectory, not remain frozen above the stairs.");
     }
 
     internal static MeasuredTriangleScene Stairs(float yaw)

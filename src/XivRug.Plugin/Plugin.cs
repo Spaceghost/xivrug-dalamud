@@ -203,6 +203,7 @@ public sealed class Plugin : IDalamudPlugin
         if (disposed) return;
         finalizedFeet?.BeginFramework(config.Enabled && config.ClothSurface && config.NativeUiComposition);
         var nativeUpdateCompleted = false;
+        var worldUpdateCompleted = false;
         try
         {
         shadowAtlas?.FindShaders();
@@ -230,6 +231,7 @@ public sealed class Plugin : IDalamudPlugin
                 && !conditions[ConditionFlag.LoggingOut], client.TerritoryType, objects.LocalPlayer?.Position);
             UpdateWorld(out physicsSampledAt);
             completed = true;
+            worldUpdateCompleted = true;
         }
         finally
         {
@@ -241,7 +243,12 @@ public sealed class Plugin : IDalamudPlugin
         }
         nativeUpdateCompleted = completed && liveRug.FootFrame is not null;
         }
-        finally { finalizedFeet?.CompleteFramework(nativeUpdateCompleted); PublishIpcStatus(); }
+        finally
+        {
+            if (!worldUpdateCompleted) liveRug.InvalidateWorldFrame();
+            finalizedFeet?.CompleteFramework(nativeUpdateCompleted);
+            PublishIpcStatus();
+        }
     }
 
     private void PublishIpcStatus()
@@ -295,7 +302,10 @@ public sealed class Plugin : IDalamudPlugin
         var canSample = client.IsLoggedIn && !conditions[ConditionFlag.BetweenAreas]
             && !conditions[ConditionFlag.BetweenAreas51] && !conditions[ConditionFlag.OccupiedInCutSceneEvent]
             && !conditions[ConditionFlag.LoggingOut];
-        characterPose.Update(canSample && config.Enabled && liveRug.HasCloth && config.IdleFootwork,canSample && config.Enabled && liveRug.HasCloth && config.RideVisual,clock.Elapsed.TotalSeconds,false,liveRug.SupportedCloth);
+        var supportedCloth = liveRug.SupportedCloth;
+        characterPose.Update(canSample && config.Enabled && supportedCloth is not null && config.IdleFootwork,
+            canSample && config.Enabled && supportedCloth is not null && config.RideVisual,
+            clock.Elapsed.TotalSeconds, false, supportedCloth);
         physicsSampledAt = Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
         var beforePhysics = footContacts.CaptureIdentity(canSample && config.Enabled);
         footContacts.Update(beforePhysics.Valid);

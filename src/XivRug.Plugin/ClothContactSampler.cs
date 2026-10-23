@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Numerics;
 using FFXIVClientStructs.FFXIV.Common.Component.BGCollision;
 using XivSurface.Core;
+using XivRug.Rendering;
 
 namespace XivRug.Plugin;
 
@@ -13,7 +14,6 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
 {
     public enum VisibilityState { InvalidScene, Visible, PlayerFloor, CenterFloor, ChangedEvidence, FootprintCoverage, OriginClearance, CenterMismatch }
     public VisibilityState Visibility { get; private set; }
-    public sealed record Frame(Vector2 Center, Vector2 HalfSize, float AnchorY, ClothMesh Mesh, int Supported, long SupportEpoch);
     public sealed record Timing(int Frames, int Raycasts, double AgeMilliseconds,
         double MaximumQueryMilliseconds, double BuildMilliseconds, float TargetDrift);
     private const double QueryBudgetMilliseconds = 2;
@@ -59,7 +59,7 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
     private Vector3 diagnosticPlayerNormal;
     private float diagnosticPlayerGap;
     private readonly Func<bool> withinDeadline;
-    public Frame? Current { get; private set; }
+    public SupportedClothFrame? Current { get; private set; }
     public float? AcceptedPlayerSupportHeight { get; private set; }
     public int RaycastsThisUpdate => rays;
     public bool RefreshDeferredThisUpdate { get; private set; }

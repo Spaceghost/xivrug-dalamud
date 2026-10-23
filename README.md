@@ -167,6 +167,14 @@ submissions, time since the last submission, GPU fault/foot-gate state and
 whether the woven material is substituting for unavailable cartography. A
 supported mesh alone does not prove a draw or a displayed pixel.
 
+Cloth geometry, map coordinates and lift are published in one immutable render
+packet. A preceding valid packet remains available while the next sample is
+prepared; failed preparation, scene resets and renderer faults revoke it.
+Canceled producers cannot restore an obsolete packet or erase its replacement.
+The renderer checks packet identity alongside the independent foot guard just
+before submission. Optional character-pose assistance reads the same supported
+snapshot and stops using it after invalidation.
+
 Unavailable map textures no longer suppress valid cloth. The woven surface
 continues while textures load and the current map returns automatically;
 map-scaled route decoration waits for that map too. No previous-zone texture

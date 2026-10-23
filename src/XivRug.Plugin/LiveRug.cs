@@ -55,9 +55,15 @@ internal sealed unsafe partial class LiveRug : IDisposable
     private ClothFootSubmission submittingFallbackFeet;
     private bool CanSubmitFinalizedFeet() => FinalizedFeet?.CanSubmit(submittingFinalizedFeet) == true;
     // Legacy character-pose assistance must not move feet to fit physical cloth.
-    public bool HasCloth => !physicalMode && clothFrame is not null;
-    public ClothMesh? SupportedCloth => physicalMode ? null : clothFrame?.Mesh;
-    private volatile ClothContactSampler.Frame? clothFrame;
+    public bool HasCloth => SupportedCloth is not null;
+    public ClothMesh? SupportedCloth => !disposed && !gpuFaulted && !physicalMode
+        && settings is { Enabled: true, ClothSurface: true } && clothPublication.Current is { } packet
+        && clothPublication.IsCurrent(packet, territory, samplingEpoch) ? packet.Cloth.Mesh : null;
+    private volatile SupportedClothFrame? clothFrame;
+    private readonly ClothRenderPublication clothPublication = new();
+    private ClothDrawPublication? submittingCloth;
+    private Func<bool>? submittingClothParentGuard;
+    private readonly Func<bool> clothSubmissionAllowed;
     private readonly PhysicalClothPresentation physicalPresentation = new();
     private double nextShadowObservation;
     private readonly Func<bool> physicalSubmissionAllowed;
@@ -140,6 +146,7 @@ internal sealed unsafe partial class LiveRug : IDisposable
         physicalSubmissionAllowed = CanSubmitPhysicalCloth;
         finalizedSubmissionAllowed = CanSubmitFinalizedFeet;
         fallbackSubmissionAllowed = CanSubmitFallbackFeet;
+        clothSubmissionAllowed = CanSubmitCloth;
     }
 
     private nint AcquireWorldDepth(nint device,uint width,uint height)
@@ -157,6 +164,15 @@ internal sealed unsafe partial class LiveRug : IDisposable
         => cloth.FinishReplay(zone, clock.Elapsed.TotalSeconds, out report);
     public void CancelClothReplay() => cloth.CancelReplay();
 
+    // Framework failure boundary. Foot capture failure alone is handled by
+    // its independent draw gate; a failed world update also revokes support.
+    public void InvalidateWorldFrame()
+    {
+        clothPublication.Invalidate();
+        clothFrame = null; current = null; visual = null;
+        InvalidatePhysicalCloth();
+    }
+
     // Runtime-controller seam, intentionally not a persisted/user-facing switch
     // yet. Turning it on never silently substitutes the old heightfield solver.
     public void SetPhysicalClothEnabled(bool enabled)
@@ -165,6 +181,7 @@ internal sealed unsafe partial class LiveRug : IDisposable
         {
             if (disposed || physicalMode == enabled) return;
             physicalPresentation.Invalidate();
+            clothPublication.Invalidate();
             physicalMode = enabled;
             current = pending = null; clothFrame = null; visual = null;
             cloth.Reset(); clothContact.Reset(); jump.Reset(); clothLift = 0;
@@ -230,20 +247,22 @@ internal sealed unsafe partial class LiveRug : IDisposable
         if (disposed) return;
         settings = config;
         ReportFootTiming();
-        if (gpuFaulted) return;
+        if (gpuFaulted)
+        { clothPublication.Invalidate(); clothFrame = null; current = pending = null; visual = null; return; }
         if (!config.Enabled || player is null || zone == 0)
-        { InvalidatePhysicalCloth(); samplingEpoch++; current = pending = null; wantedRoute = null; routeTexture = null; visual = null; follow.Reset(); cloth.Reset(); clothContact.Reset(); piano.Reset(); clothFrame=null; jump.Reset(); clothLift=0; return; }
-        if (territory != zone) { InvalidatePhysicalCloth(); samplingEpoch++; current = pending = null; territory = zone; refresh = 0; follow.Reset(); cloth.Reset(); clothContact.Reset(); piano.Reset(); clothFrame=null; jump.Reset(); clothLift=0; }
+        { clothPublication.Invalidate(); InvalidatePhysicalCloth(); samplingEpoch++; current = pending = null; wantedRoute = null; routeTexture = null; visual = null; follow.Reset(); cloth.Reset(); clothContact.Reset(); piano.Reset(); clothFrame=null; jump.Reset(); clothLift=0; return; }
+        if (territory != zone) { clothPublication.Invalidate(); InvalidatePhysicalCloth(); samplingEpoch++; current = pending = null; territory = zone; refresh = 0; follow.Reset(); cloth.Reset(); clothContact.Reset(); piano.Reset(); clothFrame=null; jump.Reset(); clothLift=0; }
         var visualHalf = config.Shape == FootprintShape.Circle ? new Vector2(config.Radius) : new Vector2(config.HalfWidth, config.HalfLength);
         var center = new Vector2(player.Value.X, player.Value.Z);
         if (!follow.Step(diagnosticFollowTarget ?? center, clock.Elapsed.TotalSeconds, config.DragRadius, config.DragResponse, config.RugMotion))
-        { InvalidatePhysicalCloth(); visual = null; current = pending = null; return; }
+        { clothPublication.Invalidate(); InvalidatePhysicalCloth(); clothFrame = null; visual = null; current = pending = null; return; }
         visual = new(zone, samplingEpoch, follow.Center, visualHalf, center, player.Value.Y, config.MapRadius / Math.Min(visualHalf.X, visualHalf.Y), follow.Travel);
         center = follow.Center;
         piano.Update(clock.Elapsed.TotalSeconds, center, config.ClothSurface && config.RugMotion && config.PianoResponse, config.PianoStrength,
             config.ClothSurface && config.RugMotion && config.MusicVisualizationEnabled);
         if (physicalMode)
         {
+            clothPublication.Invalidate();
             // Maintain map/route metadata while the runtime owner prepares an
             // independently admitted pose. No old sampling/foot correction is
             // used as a substitute when physical publication is unavailable.
@@ -259,9 +278,10 @@ internal sealed unsafe partial class LiveRug : IDisposable
         // ground plane or waiting for an entire replacement sampling sweep.
         if(config.ClothSurface)
         {
+            var clothStarted = Stopwatch.GetTimestamp();
+            var publicationTicket = clothPublication.BeginUpdate();
             try
             {
-                var clothStarted = Stopwatch.GetTimestamp();
                 cloth.Update(zone,center,visualHalf,player.Value,clock.Elapsed.TotalSeconds,config.RugMotion,FootPressure,airborne);
                 // Reuse the sampler's verified actual-player layer. A separate
                 // broad ray from above the player can hit a bridge overhead.
@@ -289,13 +309,23 @@ internal sealed unsafe partial class LiveRug : IDisposable
                     visual=new(zone,samplingEpoch,fabric.Center,visualHalf,new(player.Value.X,player.Value.Z),player.Value.Y,config.MapRadius/Math.Min(visualHalf.X,visualHalf.Y),follow.Travel);
                 }
                 else current=null;
-                ReportClothTiming(Stopwatch.GetElapsedTime(clothStarted).TotalMilliseconds);
+                var publication = clothFrame is { } supported && visual is { } appearance
+                    ? new ClothDrawPublication(supported, zone, samplingEpoch, appearance.MapCenter, appearance.MapScale, clothLift)
+                    : null;
                 Status=$"{cloth.Status} {clothGpu.Status}";
                 UpdateRoute(config.ShowRoute ? route : null);
+                // Publish last: an exception in ancillary preparation must
+                // still complete this ticket with no supported cloth.
+                if (!clothPublication.Complete(publicationTicket, publication))
+                { clothFrame = null; current = null; }
             }
-            catch(Exception ex) { Status="Cloth preparation stopped: "+ex.GetType().Name; log.Error(ex,"XivRug cloth sampling failed"); clothFrame=null; current=null; }
+            catch(Exception ex) { clothPublication.Complete(publicationTicket, null); Status="Cloth preparation stopped: "+ex.GetType().Name; log.Error(ex,"XivRug cloth sampling failed"); clothFrame=null; current=null; }
+            // A diagnostic failure propagates to the owner's world-failure
+            // boundary, which revokes even an already-completed publication.
+            ReportClothTiming(Stopwatch.GetElapsedTime(clothStarted).TotalMilliseconds);
             return;
         }
+        clothPublication.Invalidate();
         clothFrame=null; clothContact.Reset();
         var half = visualHalf + new Vector2(SamplingPadding(config));
         try
@@ -396,7 +426,8 @@ internal sealed unsafe partial class LiveRug : IDisposable
 
     public long SupportUpdates { get; private set; }
     public long SupportPublications { get; private set; }
-    public string SupportVisibility => cloth.Visibility.ToString();
+    public string SupportVisibility => clothPublication.Current is null && cloth.Visibility == ClothContactSampler.VisibilityState.Visible
+        ? "Unpublished" : cloth.Visibility.ToString();
 
     // Count hidden updates too: logging only a published mesh conceals cache
     // starvation and can make a failed collision path look healthy.
@@ -409,8 +440,9 @@ internal sealed unsafe partial class LiveRug : IDisposable
         clothRays += cloth.RaycastsThisUpdate;
         maximumClothUpdateMilliseconds = Math.Max(maximumClothUpdateMilliseconds, updateMilliseconds);
         maximumClothBuildMilliseconds = Math.Max(maximumClothBuildMilliseconds, cloth.LastTiming?.BuildMilliseconds ?? 0);
-        if (clothFrame is { } frame)
+        if (clothPublication.Current is { } packet && clothPublication.IsCurrent(packet, territory, samplingEpoch))
         {
+            var frame = packet.Cloth;
             clothPublished++;
             SupportPublications++;
             if (cloth.RefreshDeferredThisUpdate) clothDeferredRefresh++;
@@ -579,11 +611,13 @@ internal sealed unsafe partial class LiveRug : IDisposable
         lock (stageLock)
         {
             if (disposed) return;
+            clothPublication.Invalidate();
             StopNativeStage();
             lock (renderLock)
             {
                 gpu.Dispose(); clothGpu.Dispose(); musicGpu.Dispose(); musicFaulted = false; nativePipeline.Dispose(); gpuFaulted = false;
                 loggedNativeDraw = false;
+                clothFrame = null; current = null; visual = null;
                 Status = "Retrying rug renderer…";
             }
             nativeStageFailed = false;
@@ -683,8 +717,10 @@ internal sealed unsafe partial class LiveRug : IDisposable
         if (!protectedFrame)
         { footRenderBlocked = true; return false; }
         footRenderBlocked = false;
-        if(settings is { Enabled:true, ClothSurface:true } clothConfig && clothFrame is {} fabric)
+        if(settings is { Enabled:true, ClothSurface:true } clothConfig && clothPublication.Current is {} packet)
         {
+            if (!clothPublication.IsCurrent(packet, territory, samplingEpoch)) return false;
+            var fabric = packet.Cloth;
             var clothMap=clothConfig.ShowGameMap && mapFrame?.TerritoryId==territory ? mapFrame : null;
             // Cartography is optional decoration. A missing/loading texture
             // selects the existing woven material; it cannot veto fresh cloth.
@@ -693,32 +729,33 @@ internal sealed unsafe partial class LiveRug : IDisposable
                 && routeCandidate?.Request.Territory==territory
                 && routeCandidate.Request.MapMode==clothConfig.ShowGameMap ? routeCandidate : null;
             var clothArea=clothNavigation?.Request;
-            var clothAppearance=visual;
-            if(clothAppearance is null || clothAppearance.Territory!=territory) return false;
             var clothProjection=new RugProjection(fabric.Center,fabric.HalfSize,clothMap?.ShaderResourceView??0,clothMap?.Transform??default,
-                clothAppearance.MapCenter,clothAppearance.MapScale,
+                packet.MapCenter,packet.MapScale,
                 clothArea is null ? default : new Vector4(clothArea.Center.X,clothArea.Center.Z,clothArea.HalfSize.X,clothArea.HalfSize.Y),clothMap?.BackgroundShaderResourceView??0,
                 clothNavigation?.Visual);
             var submitted=clothGpu.Submissions;
             var clothDrawSeconds = clock.Elapsed.TotalSeconds;
-            var clothDrawLift = clothLift;
+            var clothDrawLift = packet.Lift;
             submittingFinalizedFeet = finalLease;
             submittingFallbackFeet = fallback;
+            submittingCloth = packet;
+            submittingClothParentGuard = finalized ? finalizedSubmissionAllowed : fallbackSubmissionAllowed;
             try
             {
                 clothGpu.Draw(device,fabric.Mesh,clothProjection,clothConfig.Shape==FootprintShape.Circle,clothConfig.CornerRadius,
                     clothDrawSeconds,clothConfig.RugMotion,clothConfig.RugEdges,.98f,clothNavigation?.Values, wear: clothConfig.RugWear, lift: clothDrawLift, feet: renderFeet,
                     acquirePrivateDepth: nativeStageDraw && nativeMode ? acquireWorldDepth : null,
-                    canSubmit: finalized ? finalizedSubmissionAllowed : fallbackSubmissionAllowed);
+                    canSubmit: clothSubmissionAllowed);
                 if (nativeStageDraw && clothGpu.Submissions != submitted)
                     DrawMusic(device, fabric.Mesh, fabric.HalfSize, clothConfig, renderFeet, clothDrawSeconds, clothDrawLift,
-                        finalized ? finalizedSubmissionAllowed : fallbackSubmissionAllowed);
+                        clothSubmissionAllowed);
             }
-            finally { submittingFinalizedFeet = null; submittingFallbackFeet = default; }
+            finally { submittingFinalizedFeet = null; submittingFallbackFeet = default; submittingCloth = null; submittingClothParentGuard = null; }
             lastDrawWasCloth = true;
             return clothGpu.Submissions!=submitted;
         }
-        if (current is not { Atlas: not null } frame || visual is not { } appearance || settings is not { Enabled: true } config) return false;
+        if (current is not { Atlas: not null } frame || visual is not { } appearance
+            || settings is not { Enabled: true, ClothSurface: false } config) return false;
         if (frame.Territory != appearance.Territory || frame.Territory != territory
             || frame.Epoch != appearance.Epoch || frame.Epoch != samplingEpoch
             || frame.HalfSize != appearance.HalfSize + new Vector2(SamplingPadding(config))
@@ -783,6 +820,11 @@ internal sealed unsafe partial class LiveRug : IDisposable
         return clothGpu.Submissions != before;
     }
 
+    private bool CanSubmitCloth() => !disposed && !gpuFaulted && !physicalMode
+        && settings is { Enabled: true, ClothSurface: true }
+        && clothPublication.IsCurrent(submittingCloth, territory, samplingEpoch)
+        && submittingClothParentGuard?.Invoke() == true;
+
     private bool CanSubmitFallbackFeet()
     {
         var allowed = !disposed && !gpuFaulted && submittingFallbackFeet.CanSubmit(FootFrame, territory,
@@ -841,6 +883,7 @@ internal sealed unsafe partial class LiveRug : IDisposable
     private void StopAfterDrawFailure(Exception ex)
     {
         gpuFaulted = true; // a device fault must never change the persisted preference
+        clothPublication.Invalidate();
         Status = "Rug GPU draw failed: " + ex.GetType().Name;
         log.Error(ex, "XivRug live draw failed; rendering disabled until retry or mode change");
     }
@@ -885,6 +928,7 @@ internal sealed unsafe partial class LiveRug : IDisposable
         lock (stageLock)
         {
             disposed = true;
+            clothPublication.Invalidate();
             StopNativeStage();
             lock (renderLock)
             {

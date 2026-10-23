@@ -13,5 +13,6 @@
     <ProjectReference Include="../../src/XivSurface.Core/XivSurface.Core.csproj" />
     <Using Include="Xunit" />
     <Compile Include="../../adapters/PhysicalClothPresentation.cs" Link="PhysicalClothPresentation.cs" />
+    <Compile Include="../../adapters/ClothRenderPublication.cs" Link="ClothRenderPublication.cs" />
   </ItemGroup>
 </Project>

@@ -373,12 +373,17 @@ internal sealed unsafe partial class LiveRug : IDisposable
         catch (Exception) { samplingEpoch++; current = pending = null; wantedRoute = null; routeTexture = null; Status = "Navmesh floor queries unavailable."; }
     }
 
+    public long SupportUpdates { get; private set; }
+    public long SupportPublications { get; private set; }
+    public string SupportVisibility => cloth.Visibility.ToString();
+
     // Count hidden updates too: logging only a published mesh conceals cache
     // starvation and can make a failed collision path look healthy.
     private void ReportClothTiming(double updateMilliseconds)
     {
         var now = clock.Elapsed.TotalSeconds;
         clothUpdates++;
+        SupportUpdates++;
         clothVisibilityCounts[(int)cloth.Visibility]++;
         clothRays += cloth.RaycastsThisUpdate;
         maximumClothUpdateMilliseconds = Math.Max(maximumClothUpdateMilliseconds, updateMilliseconds);
@@ -386,6 +391,7 @@ internal sealed unsafe partial class LiveRug : IDisposable
         if (clothFrame is { } frame)
         {
             clothPublished++;
+            SupportPublications++;
             if (cloth.RefreshDeferredThisUpdate) clothDeferredRefresh++;
             if (cloth.ContinuedOriginThisUpdate) clothContinuedOrigin++;
             if (previousClothCenter is { } previous && now > previousClothTime && now - previousClothTime < .2)

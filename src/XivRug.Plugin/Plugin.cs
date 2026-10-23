@@ -244,6 +244,8 @@ public sealed class Plugin : IDalamudPlugin
             cloth = config.ClothSurface, nativeComposition = config.NativeUiComposition,
             renderer = liveRug.Status, composition = liveRug.CompositionStatus, map = liveRug.MapStatus,
             music = liveRug.MusicStatus, navmesh = status, hasSupportedCloth = liveRug.HasCloth,
+            support = new { updates = liveRug.SupportUpdates, published = liveRug.SupportPublications,
+                visibility = liveRug.SupportVisibility },
             experimental = true, movementControl = false, recoveryCommand = "/rug",
         });
         Volatile.Write(ref ipcSnapshot, snapshot);

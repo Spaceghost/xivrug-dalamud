@@ -110,6 +110,122 @@ public sealed class LayerFloorDiscoveryTests
         Assert.Equal(0, missing); Assert.Equal(0, resets);
     }
 
+    private static (LayerFloorDiscovery Discovery, Scene Scene, LayerFloorHit Root, LayerTriangle Floor)
+        OverlappedRefresh(float separation = .016f)
+    {
+        var scene = new Scene(); scene.Triangles.AddRange(Strip(0, 1, 0, 1, 0));
+        var root = new LayerFloorHit(new(.1f, 0, .1f), scene.Triangles[0]);
+        var discovery = Seed(scene, root.Position);
+        scene.ResetBudget(8);
+        Assert.Equal(LayerQueryResult.Success, discovery.Query(new(.9f, .9f), scene, out var floor));
+        // A small independent surface overlaps the retained face's centroid,
+        // but not the original support query or the player root.
+        scene.Triangles.AddRange(Strip(.6f, .3f, .6f, .3f, 0, separation));
+        Assert.True(discovery.BeginFrame(root, 1.2));
+        Assert.True(discovery.Layer.TryRefresh(out var due)); Assert.Equal(floor.Triangle, due);
+        return (discovery, scene, root, floor.Triangle);
+    }
+
+    [Theory]
+    [InlineData(.016f)]
+    [InlineData(.008f)]
+    [InlineData(.0005f)]
+    public void ThinDisconnectedOverlayCannotPermanentlyBlockAnExistingFloor(float separation)
+    {
+        var (discovery, scene, root, floor) = OverlappedRefresh();
+        scene.Triangles.RemoveRange(2, 2);
+        scene.Triangles.AddRange(Strip(.6f, .3f, .6f, .3f, 0, separation));
+        var target = new Vector2(.7f, .7f);
+        var result = LayerQueryResult.Pending;
+        for (var frame = 0; frame < 12 && result == LayerQueryResult.Pending; frame++)
+        {
+            Assert.True(discovery.BeginFrame(root, 1.2 + frame / 60d));
+            scene.ResetBudget(1);
+            result = discovery.Query(target, scene, out var hit);
+            Assert.InRange(scene.Calls, 0, 1);
+            if (result == LayerQueryResult.Success)
+            { Assert.Equal(floor, hit.Triangle); Assert.Equal(0, hit.Position.Y); }
+        }
+        Assert.Equal(LayerQueryResult.Success, result);
+        Assert.Equal(2, discovery.Layer.Count);
+    }
+
+    [Theory]
+    [InlineData(1, .016f)]
+    [InlineData(2, .016f)]
+    [InlineData(1, .0005f)]
+    [InlineData(2, .0005f)]
+    public void RefreshFindsExactFloorUnderThinOverlapWithinCallBudget(int budget, float separation)
+    {
+        var (discovery, scene, root, floor) = OverlappedRefresh(separation);
+        scene.ResetBudget(20);
+        Assert.True(discovery.Refresh(scene, budget)); Assert.Equal(budget, scene.Calls);
+        if (budget == 1)
+        {
+            Assert.True(discovery.Layer.TryRefresh(out var due)); Assert.Equal(floor, due);
+            Assert.True(discovery.BeginFrame(root, 1.21)); scene.ResetBudget(20);
+            Assert.True(discovery.Refresh(scene, 1)); Assert.Equal(1, scene.Calls);
+        }
+        Assert.False(discovery.Layer.TryRefresh(out _));
+        Assert.True(discovery.BeginFrame(root, 2.01));
+        Assert.True(discovery.Layer.Contains(floor)); Assert.Equal(2, discovery.Layer.Count);
+        Assert.Null(discovery.LastRefreshFailure);
+    }
+
+    [Fact]
+    public void OverlapDoesNotRenewOriginalFloorUntilExactFaceIsMeasured()
+    {
+        var (discovery, scene, root, floor) = OverlappedRefresh();
+        scene.ResetBudget(1); Assert.True(discovery.Refresh(scene));
+        Assert.False(discovery.BeginFrame(root, 2.01));
+        Assert.False(discovery.Layer.Contains(floor));
+    }
+
+    [Fact]
+    public void MissingFloorUnderOverlapStillInvalidatesAfterPendingRefresh()
+    {
+        var (discovery, scene, root, floor) = OverlappedRefresh();
+        scene.ResetBudget(1); Assert.True(discovery.Refresh(scene));
+        scene.Triangles.Remove(floor);
+        Assert.True(discovery.BeginFrame(root, 1.21)); scene.ResetBudget(1);
+        Assert.False(discovery.Refresh(scene)); Assert.Equal(1, scene.Calls);
+        Assert.Equal(0, discovery.Layer.Count);
+        Assert.Equal(floor, discovery.LastRefreshFailure!.Value.Expected);
+        Assert.False(discovery.LastRefreshFailure.Value.Hit);
+    }
+
+    [Fact]
+    public void ChangedFaceAtOriginalFloorHeightIsNotAnOccludingLayer()
+    {
+        var (discovery, scene, _, floor) = OverlappedRefresh();
+        scene.Triangles.Clear();
+        scene.Triangles.AddRange(Strip(0, 2, 0, 2, 0));
+        scene.ResetBudget(2);
+        Assert.False(discovery.Refresh(scene)); Assert.Equal(1, scene.Calls);
+        Assert.Equal(0, discovery.Layer.Count);
+        Assert.Equal(floor, discovery.LastRefreshFailure!.Value.Expected);
+        Assert.True(discovery.LastRefreshFailure.Value.Hit);
+    }
+
+    [Fact]
+    public void CapturedLimsaThinCollisionEdgeResolvesToItsOriginalSlopedFloor()
+    {
+        var floor = Triangle(new(-67.38324f, 41.90013f, -130.16849f),
+            new(-63.998795f, 41.999474f, -128.27255f), new(-66.89143f, 41.99999f, -130.96619f));
+        var edge = Triangle(new(-67.00302f, 41.98625f, -130.96675f),
+            new(-61.98835f, 41.986275f, -126.21422f), new(-66.97838f, 42.016273f, -130.99268f));
+        var target = new Vector2(-66.8f, -130.8f);
+        Assert.True(floor.TryHeight(target, out var height));
+        Assert.True(edge.TryHeight(target, out var edgeHeight));
+        Assert.InRange(edgeHeight - height, .007f, .009f);
+        var scene = new Scene(); scene.Triangles.AddRange([floor, edge]);
+        var discovery = Seed(scene, new(target.X, height, target.Y));
+        scene.ResetBudget(8);
+        Assert.Equal(LayerQueryResult.Success, discovery.Query(target, scene, out var hit));
+        Assert.Equal(floor, hit.Triangle); Assert.Equal(height, hit.Position.Y);
+        Assert.Equal(2, scene.Calls); Assert.False(discovery.Layer.Contains(edge));
+    }
+
     [Fact]
     public void ExpiredConnectionEvidenceCannotRemainAValidLayerForever()
     {

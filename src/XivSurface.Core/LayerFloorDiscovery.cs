@@ -52,6 +52,9 @@ public sealed class LayerFloorDiscovery
     private readonly Dictionary<Vector2, Work> pending = [];
     private readonly List<Vector2> retired = [];
     private double now;
+    private LayerTriangle refreshTriangle;
+    private ClothFloorProbe refreshProbe;
+    private int refreshLayersSkipped;
     private readonly bool measuredCloth;
     public LocalFloorLayer Layer { get; }
     public LayerFloorDiscovery() : this(LayerSupportScope.WalkableOnly) { }
@@ -61,9 +64,11 @@ public sealed class LayerFloorDiscovery
         measuredCloth = scope == LayerSupportScope.MeasuredCloth;
     }
     public int Pending => pending.Count;
+    public readonly record struct RefreshFailure(LayerTriangle Expected, LayerTriangle Actual, bool Hit, bool Accepted);
+    public RefreshFailure? LastRefreshFailure { get; private set; }
     public bool ProvesPlanarCell(LayerFloorHit center,Vector3 a,Vector3 b,Vector3 c,Vector3 d,
         Func<bool>? withinDeadline=null) => Layer.ProvesPlanarCell(center,a,b,c,d,withinDeadline);
-    public bool Seed(LayerFloorHit hit) { pending.Clear(); return Layer.Seed(hit); }
+    public bool Seed(LayerFloorHit hit) { pending.Clear(); refreshTriangle = default; return Layer.Seed(hit); }
     public bool BeginFrame(LayerFloorHit hit, double time, Vector2? center = null, float retainRadius = 5)
     {
         now = time;
@@ -75,7 +80,7 @@ public sealed class LayerFloorDiscovery
             foreach (var key in retired) pending.Remove(key);
             return true;
         }
-        pending.Clear(); return false;
+        pending.Clear(); refreshTriangle = default; return false;
     }
 
     public bool Refresh(ILayerFloorScene scene, int maximumCalls = 2)
@@ -85,23 +90,48 @@ public sealed class LayerFloorDiscovery
             var at = (triangle.A + triangle.B + triangle.C) / 3;
             var before = AttemptCount(scene);
             bool valid;
+            LayerTriangle actual;
+            bool found;
+            bool accepted;
             // Raw upward geometry is not a role: a slightly slanted ordinary
             // curb also satisfies it. Only an admitted graph surface gets the
             // downward cloth refresh; curb-only evidence retains its wall ray.
             if (triangle.Walkable || measuredCloth && Layer.Contains(triangle)
                 && Layer.IsMeasuredSupport(new(at, triangle)))
             {
-                var hit = ReadFloor(scene, new(new(at.X, at.Z), at.Y + .05f, .1f, at.Y - .05f, at.Y + .05f), out var floor);
+                if (refreshTriangle != triangle)
+                {
+                    refreshTriangle = triangle;
+                    refreshProbe = new(new(at.X, at.Z), at.Y + .05f, .1f, at.Y - .05f, at.Y + .05f);
+                    refreshLayersSkipped = 0;
+                }
+                var hit = ReadFloor(scene, refreshProbe, out var floor);
                 if (!hit && NotAttempted(scene, before)) return true;
+                actual = floor.Triangle; found = hit; accepted = CandidateValid(floor);
                 valid = hit && CandidateValid(floor) && floor.Triangle == triangle;
+                // Discovery can reach this face underneath a disconnected
+                // overlapping surface. Its centroid refresh must use the same
+                // layer discipline: a higher hit alone does not prove that the
+                // original face vanished. Resume below that hit, within the
+                // ORIGINAL band and call budget, until the exact face is seen.
+                // Neither the occluder nor pending work renews any evidence.
+                if (!valid && hit && accepted && refreshLayersSkipped < 4
+                    && TryNarrowBelow(refreshProbe, floor.Position.Y, at.Y, out var narrowed))
+                {
+                    refreshProbe = narrowed;
+                    refreshLayersSkipped++;
+                    continue;
+                }
             }
             else
             {
                 var hit = scene.TryWall(at + triangle.Normal * .03f, at - triangle.Normal * .03f, out var wall);
                 if (!hit && NotAttempted(scene, before)) return true;
+                actual = wall; found = hit; accepted = wall.Valid;
                 valid = hit && wall == triangle;
             }
-            if (!valid) { Seed(default); return false; }
+            if (!valid) { LastRefreshFailure = new(triangle, actual, found, accepted); Seed(default); return false; }
+            refreshTriangle = default;
             Layer.ObserveExact(triangle);
         }
         return true;
@@ -201,13 +231,11 @@ public sealed class LayerFloorDiscovery
             {
                 if (!Layer.TryNearest(work.Probe.Position, out var parent, out _)
                     || !TrySupportHeight(parent, work.Probe.Position, out var predicted)) return Finish(LayerQueryResult.Unknown);
-                if (work.Candidate.Position.Y > predicted + .01f)
+                if (TryNarrowBelow(work.Probe, work.Candidate.Position.Y, predicted, out var below))
                 {
                     // A disconnected deck is not our support. Inspect beneath
                     // its face while retaining the original local lower bound.
-                    var start = work.Candidate.Position.Y - .005f;
-                    if (start <= work.Probe.MinimumY) return Finish(LayerQueryResult.Unknown);
-                    work.Probe = work.Probe with { StartY = start, MaximumY = start, Length = start - work.Probe.MinimumY };
+                    work.Probe = below;
                     work.LayersSkipped++; work.Phase = 1; continue;
                 }
                 if (work.Frontier) return Finish(LayerQueryResult.Unknown);
@@ -219,6 +247,21 @@ public sealed class LayerFloorDiscovery
         return LayerQueryResult.Pending;
 
         LayerQueryResult Finish(LayerQueryResult status) { pending.Remove(wanted); return status; }
+    }
+
+    private static bool TryNarrowBelow(ClothFloorProbe probe, float hitY, float expectedY, out ClothFloorProbe narrowed)
+    {
+        narrowed = default;
+        // Thin overlapping collision meshes can differ by less than a
+        // centimetre. A fixed 5 mm step can also jump beneath the sought face.
+        // Height guides this new ray only; its actual hit must still pass the
+        // original admission/identity checks. Never widen the original band.
+        if (!probe.Valid || !float.IsFinite(hitY) || !float.IsFinite(expectedY)
+            || hitY - expectedY <= LayerFloorHit.PlanarHeightTolerance) return false;
+        var start = expectedY + (hitY - expectedY) * .5f;
+        if (start <= expectedY || start >= hitY || start >= probe.StartY || start <= probe.MinimumY) return false;
+        narrowed = probe with { StartY = start, MaximumY = start, Length = start - probe.MinimumY };
+        return narrowed.Valid;
     }
 
     private bool ReadFloor(ILayerFloorScene scene, ClothFloorProbe probe, out LayerFloorHit hit)

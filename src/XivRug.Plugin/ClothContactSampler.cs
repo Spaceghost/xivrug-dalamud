@@ -41,6 +41,9 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
     private int chordObservationAttempts, retainedChordHits;
     private int cellSuccess, cellPending, cellUnknown;
     private string firstCellFailure = "none";
+    private Vector2 diagnosticCenter, failedVertex;
+    private string vertexPhase = "none", failedVertexPhase = "none";
+    private LayerQueryResult failedVertexResult;
     private string firstClearanceFailure = "none";
     private RollingClothSupport? support;
     private SupportQueryIdentity requestedOrigin;
@@ -84,7 +87,7 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
             for (var i = 0; i < sample.Contacts.Length; i++)
                 uplift = Math.Max(uplift, ground[i] - sample.Contacts[i].Y);
         }
-        return FormattableString.Invariant($"collision faces flat={geometry.FlatFaces}, sloped={geometry.SlopedFaces}, risers={geometry.RiserFaces}, min normalY={geometry.MinimumNormalY:F4}; player normal=({diagnosticPlayerNormal.X:F4},{diagnosticPlayerNormal.Y:F4},{diagnosticPlayerNormal.Z:F4}), floor gap={diagnosticPlayerGap:F4}y; planar cells={planar}/{cells}, max cell uplift={uplift:F4}y; current support={Current is not null}; clearance floor chords={floorChordHits}, retained exact floor hits={retainedChordHits}/{chordObservationAttempts}, walls={wallHits}, path pending/unknown={pathPending}/{pathUnknown}, first={firstClearanceFailure}; cell success/pending/unknown={cellSuccess}/{cellPending}/{cellUnknown}, first={firstCellFailure}");
+        return FormattableString.Invariant($"collision faces flat={geometry.FlatFaces}, sloped={geometry.SlopedFaces}, risers={geometry.RiserFaces}, min normalY={geometry.MinimumNormalY:F4}; player normal=({diagnosticPlayerNormal.X:F4},{diagnosticPlayerNormal.Y:F4},{diagnosticPlayerNormal.Z:F4}), floor gap={diagnosticPlayerGap:F4}y; planar cells={planar}/{cells}, max cell uplift={uplift:F4}y; current support={Current is not null}; clearance floor chords={floorChordHits}, retained exact floor hits={retainedChordHits}/{chordObservationAttempts}, walls={wallHits}, path pending/unknown={pathPending}/{pathUnknown}, first={firstClearanceFailure}; cell success/pending/unknown={cellSuccess}/{cellPending}/{cellUnknown}, first={firstCellFailure}; last refresh failure={layer.LastRefreshFailure}; {support?.DescribeCoverage(diagnosticCenter, queryTime)}; last failed vertex={failedVertex} {failedVertexPhase} {failedVertexResult}");
     }
 
     public ClothContactSampler()
@@ -114,6 +117,7 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
         RefreshDeferredThisUpdate = false;
         ContinuedOriginThisUpdate = false;
         queryTime = now;
+        diagnosticCenter = wantedCenter;
         replayCopiedThisUpdate = false;
         floorChordHits = wallHits = pathPending = pathUnknown = 0;
         chordObservationAttempts = retainedChordHits = 0;
@@ -299,26 +303,39 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
 
     public bool TryVertex(SupportQueryIdentity identity, Vector2 nominal, out Vector3 contact)
     {
+        var success = TryVertexCore(identity, nominal, out contact);
+        if (!success)
+        { failedVertex = nominal; failedVertexPhase = vertexPhase; failedVertexResult = LastResult; }
+        return success;
+    }
+
+    private bool TryVertexCore(SupportQueryIdentity identity, Vector2 nominal, out Vector3 contact)
+    {
         contact = default;
+        vertexPhase = "nominal floor";
         LastResult = QueryFloor(nominal, out var floor);
         if (LastResult == LayerQueryResult.Pending) return false;
         if (LastResult == LayerQueryResult.Unknown)
         {
+            vertexPhase = "unknown floor fallback";
             // Behind a wall, the nominal floor can be unknown even though its
             // compressed point is valid. Plane height guides this wall query
             // only; the compressed contact still needs its own actual floor.
             if (!layer.Layer.TryNearest(nominal, out var witness, out _)
                 || !layer.Layer.TryMeasuredHeight(witness, nominal, out var hint)
-                || !TryCompress(nominal, hint, identity.CompressionOrigin, out var fallback)
-                || Vector2.DistanceSquared(fallback, nominal) < 1e-10f) return false;
+                || !TryCompress(nominal, hint, identity.CompressionOrigin, out var fallback)) return false;
+            if (Vector2.DistanceSquared(fallback, nominal) < 1e-10f)
+            { LastResult = LayerQueryResult.Unknown; return false; }
             LastResult = QueryFloor(fallback, out floor);
             if (LastResult != LayerQueryResult.Success) return false;
             contact = floor.Position; return true;
         }
+        vertexPhase = "compression";
         if (!TryCompress(nominal, floor.Position.Y, identity.CompressionOrigin, out var point))
             return false;
         if (Vector2.DistanceSquared(point, nominal) < 1e-10f)
         { contact = floor.Position; LastResult = LayerQueryResult.Success; return true; }
+        vertexPhase = "compressed floor";
         LastResult = QueryFloor(point, out floor);
         if (LastResult != LayerQueryResult.Success) return false;
         contact = floor.Position; return true;

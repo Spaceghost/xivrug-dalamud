@@ -273,6 +273,26 @@ public sealed class RollingClothSupport
         return true;
     }
 
+    public string DescribeCoverage(Vector2 desired, double now)
+    {
+        if (active is null || !Valid(desired) || !double.IsFinite(now)) return "no active support";
+        var region = Region(desired, half);
+        var vertices = 0; var missingVertices = 0; var cells = 0; var missingCells = 0;
+        Vector2? firstVertex = null, firstCell = null;
+        for (var z = region.Z0; z <= region.Z1; z++)
+        for (var x = region.X0; x <= region.X1; x++)
+        {
+            vertices++;
+            if (!active.Vertices.TryGetValue(new(x, z), out var vertex) || !Fresh(vertex, now))
+            { missingVertices++; firstVertex ??= new(x * spacing, z * spacing); }
+            if (x == region.X1 || z == region.Z1) continue;
+            cells++;
+            if (!active.Cells.TryGetValue(new(x, z), out var cell) || !CellFresh(active, new(x, z), cell, now))
+            { missingCells++; firstCell ??= new((x + .5f) * spacing, (z + .5f) * spacing); }
+        }
+        return $"missing vertices={missingVertices}/{vertices}, first={firstVertex}; missing cells={missingCells}/{cells}, first={firstCell}";
+    }
+
     /// <summary>Fully confirmed square with the largest usable radius around
     /// the requested center, then largest lattice area. A compact patch requires all
     /// current vertex and cell evidence; no missing floor is interpolated.

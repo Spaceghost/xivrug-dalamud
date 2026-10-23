@@ -149,9 +149,19 @@ query can overrun its deadline; mesh construction is measured separately.
 Once the required current-player and center checks succeed, an exhausted
 optional-refresh deadline does not hide otherwise complete, fresh support.
 Missing, expired or wrong-layer support still hides the rug.
+Thin overlapping collision surfaces are resolved with bounded downward probes
+between the measured upper hit and the expected floor height. Refresh must find
+the exact original face before renewing it; neither an upper surface nor a
+pending query renews support. This fixes repeated whole-layer resets and a
+permanent missing vertex observed at an overlapping collision edge in Limsa.
 Bounded diagnostics every 20 seconds count all updates, published and hidden
 frames, deferred-refresh publications, ray calls, maximum update/build cost
 and measured visible-center speed.
+They also identify missing grid vertices/cells and the last refresh mismatch.
+The cached `XivRug.v1.GetStatus` IPC includes cumulative `support.updates`,
+`support.published` and current `support.visibility`, so MCP can check continuity
+even when Dalamud's file logger is unavailable. These count collision-supported
+mesh publications; final render and foot-contact gates remain independent.
 The rolling implementation needs live walking, corners and stairs verification
 before claiming fully fluid movement.
 

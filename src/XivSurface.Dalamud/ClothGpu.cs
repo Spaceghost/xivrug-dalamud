@@ -245,10 +245,10 @@ public sealed unsafe class ClothGpu : IDisposable
                 // Both finally blocks still restore state/release COM on refusal.
                 if (canSubmit is not null && !canSubmit()) return;
                 ctx->Draw((uint)vertexCount, 0);
-                if (light.Darkness > .015f) DrawWisps(ctx, ref values, wisps, (Vector3)camera->SceneCamera.Position, canSubmit);
                 Status = $"Cloth mesh submitted: {vertexCount/3:N0} triangles.";
                 Submissions++;
                 if (sharedDepth != null) SharedDepthSubmissions++;
+                if (light.Darkness > .015f) DrawWisps(ctx, ref values, wisps, (Vector3)camera->SceneCamera.Position, canSubmit);
             }
             finally
             {

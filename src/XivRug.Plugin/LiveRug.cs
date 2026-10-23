@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Numerics;
+using System.Text.Json.Serialization;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Plugin;
 using Dalamud.Plugin.Ipc;
@@ -50,6 +51,8 @@ internal sealed unsafe partial class LiveRug : IDisposable
     internal NativeFootFrameCapture? FinalizedFeet { get; set; }
     private ClothFootPresentationFrame.Lease? submittingFinalizedFeet;
     private readonly Func<bool> finalizedSubmissionAllowed;
+    private readonly Func<bool> fallbackSubmissionAllowed;
+    private ClothFootSubmission submittingFallbackFeet;
     private bool CanSubmitFinalizedFeet() => FinalizedFeet?.CanSubmit(submittingFinalizedFeet) == true;
     // Legacy character-pose assistance must not move feet to fit physical cloth.
     public bool HasCloth => !physicalMode && clothFrame is not null;
@@ -93,6 +96,23 @@ internal sealed unsafe partial class LiveRug : IDisposable
     private volatile bool gpuFaulted;
     private volatile bool footRenderBlocked;
     private readonly object renderLock = new();
+    private long drawAttempts, drawSubmissions;
+    private double lastSubmissionAt;
+    public volatile bool MapProbeActive;
+    public sealed record RenderStatistics(
+        [property: JsonPropertyName("attempts")] long Attempts,
+        [property: JsonPropertyName("submitted")] long Submitted,
+        [property: JsonPropertyName("lastSubmissionAgeSeconds")] double? LastSubmissionAgeSeconds,
+        [property: JsonPropertyName("faulted")] bool Faulted,
+        [property: JsonPropertyName("footTrackingBlocked")] bool FootTrackingBlocked,
+        [property: JsonPropertyName("mapFallback")] bool MapFallback);
+    public RenderStatistics GetRenderStatistics()
+    {
+        lock (renderLock)
+            return new(drawAttempts, drawSubmissions,
+                drawSubmissions == 0 ? null : Math.Max(0, clock.Elapsed.TotalSeconds - lastSubmissionAt),
+                gpuFaulted, footRenderBlocked, current is not null && settings?.ShowGameMap == true && mapFrame is null);
+    }
     private RouteRequest? wantedRoute;
     private NavigationVisual? wantedRouteVisual;
     private Task<RouteTexture>? routeWork;
@@ -119,6 +139,7 @@ internal sealed unsafe partial class LiveRug : IDisposable
         callback = Render;
         physicalSubmissionAllowed = CanSubmitPhysicalCloth;
         finalizedSubmissionAllowed = CanSubmitFinalizedFeet;
+        fallbackSubmissionAllowed = CanSubmitFallbackFeet;
     }
 
     private nint AcquireWorldDepth(nint device,uint width,uint height)
@@ -626,6 +647,23 @@ internal sealed unsafe partial class LiveRug : IDisposable
     // snapshot and optional route field; only their composition stage differs.
     private bool CommonDraw(nint device, Vector2 viewport, bool nativeStageDraw = false)
     {
+        var before = clothGpu.Submissions + gpu.Submissions;
+        try { return CommonDrawCore(device, viewport, nativeStageDraw); }
+        finally
+        {
+            drawAttempts++;
+            if (clothGpu.Submissions + gpu.Submissions > before)
+            {
+                drawSubmissions++; lastSubmissionAt = clock.Elapsed.TotalSeconds;
+                // A later optional wisp/music refusal cannot retroactively
+                // label the already-submitted rug as hidden by its foot gate.
+                footRenderBlocked = false;
+            }
+        }
+    }
+
+    private bool CommonDrawCore(nint device, Vector2 viewport, bool nativeStageDraw)
+    {
         if (physicalMode) return DrawPhysicalCloth(device, nativeStageDraw);
         // Old/missing character protection is not permission to draw through
         // feet. Resume automatically on the next valid framework snapshot.
@@ -634,12 +672,12 @@ internal sealed unsafe partial class LiveRug : IDisposable
         var now = Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency;
         var gate = ClothFootRenderGate.MissingFrame;
         ClothFootPresentationFrame.Lease? finalLease = null;
+        ClothFootSubmission fallback = default;
         var finalized = nativeStageDraw && settings?.ClothSurface == true && FinalizedFeet is { } capture
             && capture.TryAcquire(territory, now, renderFeet, out finalLease);
         using var presentationLease = finalLease;
-        var protectedFrame = finalized || feet is not null && (settings?.ClothSurface == true
-            ? feet.TryGetClothRenderContacts(territory, now, renderFeet, out gate)
-            : feet.TryGetRenderContacts(territory, now, renderFeet, out gate));
+        var protectedFrame = finalized || ClothFootSubmission.TryPrepare(feet, territory, now,
+            settings?.ClothSurface == true, renderFeet, out fallback, out gate);
         if (finalized) gate = ClothFootRenderGate.Allowed;
         RecordFootTiming(gate, finalized ? now - finalLease!.Frame.SampledAt : feet is null ? double.NaN : now - feet.SampledAt);
         if (!protectedFrame)
@@ -648,9 +686,11 @@ internal sealed unsafe partial class LiveRug : IDisposable
         if(settings is { Enabled:true, ClothSurface:true } clothConfig && clothFrame is {} fabric)
         {
             var clothMap=clothConfig.ShowGameMap && mapFrame?.TerritoryId==territory ? mapFrame : null;
-            if(clothConfig.ShowGameMap && clothMap is null) return false;
+            // Cartography is optional decoration. A missing/loading texture
+            // selects the existing woven material; it cannot veto fresh cloth.
             var routeCandidate=routeTexture;
-            var clothNavigation=clothConfig.ShowRoute && routeCandidate?.Request.Territory==territory
+            var clothNavigation=clothConfig.ShowRoute && (!clothConfig.ShowGameMap || clothMap is not null)
+                && routeCandidate?.Request.Territory==territory
                 && routeCandidate.Request.MapMode==clothConfig.ShowGameMap ? routeCandidate : null;
             var clothArea=clothNavigation?.Request;
             var clothAppearance=visual;
@@ -663,17 +703,18 @@ internal sealed unsafe partial class LiveRug : IDisposable
             var clothDrawSeconds = clock.Elapsed.TotalSeconds;
             var clothDrawLift = clothLift;
             submittingFinalizedFeet = finalLease;
+            submittingFallbackFeet = fallback;
             try
             {
                 clothGpu.Draw(device,fabric.Mesh,clothProjection,clothConfig.Shape==FootprintShape.Circle,clothConfig.CornerRadius,
                     clothDrawSeconds,clothConfig.RugMotion,clothConfig.RugEdges,.98f,clothNavigation?.Values, wear: clothConfig.RugWear, lift: clothDrawLift, feet: renderFeet,
                     acquirePrivateDepth: nativeStageDraw && nativeMode ? acquireWorldDepth : null,
-                    canSubmit: finalized ? finalizedSubmissionAllowed : null);
+                    canSubmit: finalized ? finalizedSubmissionAllowed : fallbackSubmissionAllowed);
                 if (nativeStageDraw && clothGpu.Submissions != submitted)
                     DrawMusic(device, fabric.Mesh, fabric.HalfSize, clothConfig, renderFeet, clothDrawSeconds, clothDrawLift,
-                        finalized ? finalizedSubmissionAllowed : null);
+                        finalized ? finalizedSubmissionAllowed : fallbackSubmissionAllowed);
             }
-            finally { submittingFinalizedFeet = null; }
+            finally { submittingFinalizedFeet = null; submittingFallbackFeet = default; }
             lastDrawWasCloth = true;
             return clothGpu.Submissions!=submitted;
         }
@@ -684,9 +725,8 @@ internal sealed unsafe partial class LiveRug : IDisposable
             || !ContainsFootprint(frame, appearance.Center, appearance.HalfSize)
             || Math.Abs(frame.AnchorY - appearance.Height) > 1) return false;
         var map = config.ShowGameMap && mapFrame?.TerritoryId == territory ? mapFrame : null;
-        if (config.ShowGameMap && map is null) return false;
         var candidate = routeTexture;
-        var navigation = config.ShowRoute && candidate?.Request.Territory == territory
+        var navigation = config.ShowRoute && (!config.ShowGameMap || map is not null) && candidate?.Request.Territory == territory
             && candidate.Request.MapMode == config.ShowGameMap ? candidate : null;
         var area = navigation?.Request;
         var projection = new RugProjection(appearance.Center, appearance.HalfSize,
@@ -694,10 +734,16 @@ internal sealed unsafe partial class LiveRug : IDisposable
             area is null ? default : new Vector4(area.Center.X, area.Center.Z, area.HalfSize.X, area.HalfSize.Y),
             map?.BackgroundShaderResourceView ?? 0, navigation?.Visual);
         var before = gpu.Submissions;
-        gpu.Draw(device, frame.Center, frame.HalfSize, frame.Heights,
-            viewport, config.Shape == FootprintShape.Circle, config.CornerRadius,
-            (float)clock.Elapsed.TotalSeconds, config.RugMotion, config.RugEdges, config.Feather,
-            navigation?.Values, projection, frame.Atlas, appearance.Travel, wear: config.RugWear, feet: renderFeet);
+        submittingFallbackFeet = fallback;
+        try
+        {
+            gpu.Draw(device, frame.Center, frame.HalfSize, frame.Heights,
+                viewport, config.Shape == FootprintShape.Circle, config.CornerRadius,
+                (float)clock.Elapsed.TotalSeconds, config.RugMotion, config.RugEdges, config.Feather,
+                navigation?.Values, projection, frame.Atlas, appearance.Travel, wear: config.RugWear, feet: renderFeet,
+                canSubmit: fallbackSubmissionAllowed);
+        }
+        finally { submittingFallbackFeet = default; }
         lastDrawWasCloth = false;
         return gpu.Submissions != before;
     }
@@ -714,9 +760,8 @@ internal sealed unsafe partial class LiveRug : IDisposable
             || packet is null || !PhysicalChartMatches(config, packet.Chart)
             || visual is not { } appearance || appearance.Territory != territory) return false;
         var map = config.ShowGameMap && mapFrame?.TerritoryId == territory ? mapFrame : null;
-        if (config.ShowGameMap && map is null) return false;
         var candidate = routeTexture;
-        var navigation = config.ShowRoute && candidate?.Request.Territory == territory
+        var navigation = config.ShowRoute && (!config.ShowGameMap || map is not null) && candidate?.Request.Territory == territory
             && candidate.Request.MapMode == config.ShowGameMap ? candidate : null;
         var area = navigation?.Request;
         var chart = packet.Chart;
@@ -736,6 +781,14 @@ internal sealed unsafe partial class LiveRug : IDisposable
         finally { submittingPhysical = null; }
         lastDrawWasCloth = true;
         return clothGpu.Submissions != before;
+    }
+
+    private bool CanSubmitFallbackFeet()
+    {
+        var allowed = !disposed && !gpuFaulted && submittingFallbackFeet.CanSubmit(FootFrame, territory,
+            Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency);
+        if (!allowed) footRenderBlocked = true;
+        return allowed;
     }
 
     // Cached delegate, called under renderLock by ClothGpu AFTER resource and
@@ -798,7 +851,7 @@ internal sealed unsafe partial class LiveRug : IDisposable
         {
             GameMapFrame? acquired = null;
             var agent = AgentMap.Instance();
-            if (settings?.ShowGameMap == true && visual is not null && agent != null
+            if (!MapProbeActive && settings?.ShowGameMap == true && visual is not null && agent != null
                 && maps.TryAcquire(territory, agent->CurrentMapId, out acquired))
             {
                 MapStatus = $"Game map {acquired!.MapId}: {acquired.TexturePath}";
@@ -809,7 +862,9 @@ internal sealed unsafe partial class LiveRug : IDisposable
                         acquired.MapId, acquired.TexturePath, acquired.Transform, acquired.BackgroundTexturePath);
                 }
             }
-            else MapStatus = settings?.ShowGameMap == true ? maps.Status : "Game map hidden (textile only).";
+            else MapStatus = settings?.ShowGameMap == true
+                ? (MapProbeActive ? "Development map outage probe." : maps.Status) + " Woven rug remains visible when supported."
+                : "Game map hidden (textile only).";
             var old = mapFrame;
             mapFrame = acquired;
             old?.Dispose();

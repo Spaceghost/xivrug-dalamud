@@ -222,7 +222,11 @@ public sealed class ClothFootPresentationFrameTests
         using var policy = new ClothFootPresentationFrame(); Finalize(policy);
         Assert.True(policy.TryAcquire(129, Epoch, 10.343, out var lease));
         using var entering = new ManualResetEventSlim(); using var finished = new ManualResetEventSlim();
-        var worker = Task.Run(() => { entering.Set(); policy.BeginFramework(Owner); finished.Set(); });
+        // This deliberately blocks a worker behind the held render lease.
+        // Use a dedicated thread: a saturated test-runner pool can otherwise
+        // time out before the worker starts, without ever testing the lock.
+        var worker = Task.Factory.StartNew(() => { entering.Set(); policy.BeginFramework(Owner); finished.Set(); },
+            CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
         try
         {
             Assert.True(entering.Wait(TimeSpan.FromSeconds(2)));

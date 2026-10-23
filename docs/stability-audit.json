@@ -1,0 +1,51 @@
+{
+  "objective": "Make the FFXIV rug well-coded and stable in the game",
+  "status": "in_progress",
+  "build": "0.0.1.4",
+  "offlineTestsPassed": 1593,
+  "checks": [
+    {
+      "requirement": "Keep complete measured support across thin overlapping collision surfaces",
+      "evidence": "Captured Limsa geometry regression and live 0.0.1.3 check: 7133 supported publications across 7133 updates, including a visual follow probe",
+      "status": "verified_for_captured_location"
+    },
+    {
+      "requirement": "Do not let optional map texture loading hide supported cloth",
+      "evidence": "All three render paths use woven material when current map texture is absent; map-scaled routes are withheld; bounded mapprobe command prepared",
+      "status": "implemented_live_probe_pending"
+    },
+    {
+      "requirement": "Keep foot protection valid through resource preparation and every GPU submission",
+      "evidence": "ClothFootSubmission regressions cover swept-envelope containment, original expiry, supersession, wrong zone, rollback, slow preparation and recovery; all fallback draw paths use the guard",
+      "status": "offline_verified_live_fallback_pending"
+    },
+    {
+      "requirement": "Distinguish sampling success from actual render submission and display evidence",
+      "evidence": "MCP render counters increment from actual renderer submission counters, independently of support publication counts; submission recency and refusal/fault state are exposed",
+      "status": "implemented_in_world_sampling_pending"
+    },
+    {
+      "requirement": "Handle plugin unload, reload, logout and resource lifetime without stale draws or failures",
+      "evidence": "Repeated controlled unload/reload and title-screen load succeed; native render locks and leases reviewed; CPU ownership tests pass",
+      "status": "partial_device_resize_and_zone_transition_pending"
+    },
+    {
+      "requirement": "Stay responsive and visible through representative motion and terrain",
+      "evidence": "Offline slopes, stairs, portals, bounded query scheduling and finite discovery tests pass; visual follow probe verified at one location",
+      "status": "actual_walking_stairs_jump_mount_and_frame_stress_pending"
+    },
+    {
+      "requirement": "Bound hot-path work and avoid recurring faults or allocation-driven stalls",
+      "evidence": "Existing query deadline and ray caps retained; new submission token is a value type and predicates are cached delegates; broader runtime profiling still needed",
+      "status": "runtime_profiling_pending"
+    }
+  ],
+  "nextRuntimeChecks": [
+    "With a logged-in character, establish support and render baselines and capture the visible rug",
+    "Run the ten-second mapprobe and verify woven rendering continues, then map rendering recovers automatically",
+    "Exercise native and background composition, check draw refusals and recovery, and restore the saved mode",
+    "Exercise movement, stairs, jumping, UI occlusion and zone transitions using measured support and actual display evidence",
+    "Check resource lifecycle, frame costs, allocation pressure and Rug errors during a sustained run"
+  ],
+  "releaseGate": "Keep the broader stability goal active until pending runtime checks have adequate evidence; do not treat green unit tests as live rendering certification"
+}

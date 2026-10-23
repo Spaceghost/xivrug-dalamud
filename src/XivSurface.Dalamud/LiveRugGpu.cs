@@ -53,7 +53,8 @@ public sealed unsafe class LiveRugGpu : IDisposable
     public void Draw(nint devicePointer, Vector2 center, Vector2 halfSize, float[] heights,
         Vector2 viewport, bool circle, float corner, float seconds, bool motion,
         bool rugEdges, float feather, float[]? routeField = null, RugProjection? projection = null,
-        GeometryFloorAtlas? floorAtlas = null, Vector4 travel = default, float wear = 0, ReadOnlySpan<ClothFootContact> feet = default)
+        GeometryFloorAtlas? floorAtlas = null, Vector4 travel = default, float wear = 0, ReadOnlySpan<ClothFootContact> feet = default,
+        Func<bool>? canSubmit = null)
     {
         if (devicePointer == 0 || heights.Length != GridSize * GridSize * 2) return;
         if (routeField is not null && routeField.Length != RouteRibbonField.GridSize * RouteRibbonField.GridSize * 4) return;
@@ -203,6 +204,9 @@ public sealed unsafe class LiveRugGpu : IDisposable
                 ctx->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY.D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
                 var rectangle = new RECT(0, 0, (int)viewport.X, (int)viewport.Y);
                 ctx->RSSetScissorRects(1, &rectangle);
+                // Preparation can stall after the caller built its swept foot
+                // envelope. Refusal still runs the pipeline-restoration finally.
+                if (canSubmit is not null && !canSubmit()) return;
                 ctx->Draw(3, 0);
                 Submissions++;
                 Status = "Rug draw submitted.";

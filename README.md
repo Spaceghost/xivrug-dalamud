@@ -162,6 +162,24 @@ The cached `XivRug.v1.GetStatus` IPC includes cumulative `support.updates`,
 `support.published` and current `support.visibility`, so MCP can check continuity
 even when Dalamud's file logger is unavailable. These count collision-supported
 mesh publications; final render and foot-contact gates remain independent.
+The `render` status separately reports draw attempts, actual CPU-side GPU
+submissions, time since the last submission, GPU fault/foot-gate state and
+whether the woven material is substituting for unavailable cartography. A
+supported mesh alone does not prove a draw or a displayed pixel.
+
+Unavailable map textures no longer suppress valid cloth. The woven surface
+continues while textures load and the current map returns automatically;
+map-scaled route decoration waits for that map too. No previous-zone texture
+is reused. Development builds provide `/rug mapprobe on|off` to simulate a
+ten-second texture outage without changing saved preferences. A scene change
+or combat cancels the probe.
+
+Fallback foot envelopes cover up to eight milliseconds of GPU preparation,
+bounded by the original capture expiry. Every fallback draw rechecks the exact
+publication, zone and deadline after resource preparation. A cold preparation
+that exceeds its envelope skips that draw and can recover on a fresh next
+capture. The finalized native-frame and physical-publication leases remain
+separate; this is not a claim of GPU execution-time pose attestation.
 The rolling implementation needs live walking, corners and stairs verification
 before claiming fully fluid movement.
 

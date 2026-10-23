@@ -42,6 +42,9 @@ public sealed class Plugin : IDalamudPlugin
     private readonly IPluginLog log;
     private readonly RugMotionProbe motionProbe = new();
     private int motionProbeRequest;
+    private int mapProbeRequest;
+    private double mapProbeUntil;
+    private uint mapProbeTerritory;
     private readonly ICallGateSubscriber<bool> ready;
     private readonly ICallGateSubscriber<string> getRoute;
     private volatile NavigationRoute? route;
@@ -152,6 +155,14 @@ public sealed class Plugin : IDalamudPlugin
             Interlocked.Exchange(ref motionProbeRequest, parts[1].Equals("on", StringComparison.OrdinalIgnoreCase) ? 1 : -1);
             return;
         }
+        if (parts.Length == 2 && parts[0].Equals("mapprobe", StringComparison.OrdinalIgnoreCase)
+            && (parts[1].Equals("on", StringComparison.OrdinalIgnoreCase) || parts[1].Equals("off", StringComparison.OrdinalIgnoreCase)))
+        {
+            // Development-only outage injection. The framework owns its
+            // ten-second deadline and cancels it on scene changes.
+            if (pi.IsDev) Interlocked.Exchange(ref mapProbeRequest, parts[1].Equals("on", StringComparison.OrdinalIgnoreCase) ? 1 : -1);
+            return;
+        }
         if(parts.Length==2 && (parts[1]=="on" || parts[1]=="off"))
         {
             var value=parts[1]=="on";
@@ -246,6 +257,7 @@ public sealed class Plugin : IDalamudPlugin
             music = liveRug.MusicStatus, navmesh = status, hasSupportedCloth = liveRug.HasCloth,
             support = new { updates = liveRug.SupportUpdates, published = liveRug.SupportPublications,
                 visibility = liveRug.SupportVisibility },
+            render = liveRug.GetRenderStatistics(), mapProbeActive = liveRug.MapProbeActive,
             experimental = true, movementControl = false, recoveryCommand = "/rug",
         });
         Volatile.Write(ref ipcSnapshot, snapshot);
@@ -298,6 +310,11 @@ public sealed class Plugin : IDalamudPlugin
             foot => new ClothPressure(foot.Center, foot.Radius * 1.2f, 1, foot.FootY))).ToArray();
         var actualPlayer = objects.LocalPlayer?.Position;
         var probeAllowed = canSample && config.Enabled && !conditions[ConditionFlag.InCombat] && actualPlayer is not null;
+        var mapRequest = Interlocked.Exchange(ref mapProbeRequest, 0);
+        if (mapRequest > 0 && pi.IsDev && probeAllowed)
+        { mapProbeUntil = clock.Elapsed.TotalSeconds + 10; mapProbeTerritory = client.TerritoryType; }
+        else if (mapRequest < 0 || !probeAllowed || mapProbeTerritory != client.TerritoryType) mapProbeUntil = 0;
+        liveRug.MapProbeActive = pi.IsDev && probeAllowed && clock.Elapsed.TotalSeconds < mapProbeUntil;
         var wasProbing = motionProbe.Active;
         var probeRequest = Interlocked.Exchange(ref motionProbeRequest, 0);
         if (probeRequest < 0) motionProbe.Stop();

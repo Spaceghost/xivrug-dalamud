@@ -426,8 +426,16 @@ internal sealed unsafe partial class LiveRug : IDisposable
 
     public long SupportUpdates { get; private set; }
     public long SupportPublications { get; private set; }
-    public sealed record SupportGeometryReport(DateTimeOffset ObservedAt, uint TerritoryId, string Geometry);
+    public sealed record SupportGeometryReport(DateTimeOffset ObservedAt, uint TerritoryId, string Geometry,
+        int Updates, int Published, int Rays, double MaximumUpdateMilliseconds,
+        double MaximumBuildMilliseconds, int[] VisibilityCounts);
     public SupportGeometryReport? LatestSupportGeometry { get; private set; }
+    // A value snapshot of the actual rejected update survives the 200 ms IPC
+    // sampling interval. Reuse the sampler's existing status text; do not run
+    // geometry queries/formatting or allocate a report on each hidden frame.
+    public readonly record struct SupportRejection(DateTimeOffset ObservedAt, uint TerritoryId,
+        long Update, int Visibility, string Reason, int Rays, double UpdateMilliseconds);
+    public SupportRejection? LastSupportRejection { get; private set; }
     public string SupportVisibility => clothPublication.Current is null && cloth.Visibility == ClothContactSampler.VisibilityState.Visible
         ? "Unpublished" : cloth.Visibility.ToString();
 
@@ -454,7 +462,14 @@ internal sealed unsafe partial class LiveRug : IDisposable
             previousClothCenter = frame.Center;
             previousClothTime = now;
         }
-        else previousClothCenter = null;
+        else
+        {
+            previousClothCenter = null;
+            LastSupportRejection = new(DateTimeOffset.UtcNow, territory, SupportUpdates,
+                (int)cloth.Visibility,
+                cloth.Visibility == ClothContactSampler.VisibilityState.Visible ? Status : cloth.Status,
+                cloth.RaycastsThisUpdate, updateMilliseconds);
+        }
         if (now < nextClothTiming) return;
         nextClothTiming = now + 20;
         log.Information("XivRug rolling cloth: updates={Updates}, published={Published}, hidden={Hidden}, rays={Rays}, max update={UpdateMs:F2}ms, max build={BuildMs:F2}ms, max visible center speed={Speed:F3}y/s, deferred refresh publications={Deferred}, continuous anchor handoffs={Continued}; {State}",
@@ -466,7 +481,9 @@ internal sealed unsafe partial class LiveRug : IDisposable
             clothVisibilityCounts[0], clothVisibilityCounts[1], clothVisibilityCounts[2], clothVisibilityCounts[3],
             clothVisibilityCounts[4], clothVisibilityCounts[5], clothVisibilityCounts[6], clothVisibilityCounts[7]);
         var geometry = cloth.DescribeGeometry();
-        LatestSupportGeometry = new(DateTimeOffset.UtcNow, territory, geometry);
+        LatestSupportGeometry = new(DateTimeOffset.UtcNow, territory, geometry,
+            clothUpdates, clothPublished, clothRays, maximumClothUpdateMilliseconds,
+            maximumClothBuildMilliseconds, (int[])clothVisibilityCounts.Clone());
         log.Information("XivRug floor geometry: {Geometry}; global cloth lift={Lift:F4}y", geometry, clothLift);
         log.Information("XivRug world lighting: {Lighting}", clothGpu.LightingDiagnostic);
         log.Information("XivRug native shadows: {Shadow}", clothGpu.ShadowDiagnostic);

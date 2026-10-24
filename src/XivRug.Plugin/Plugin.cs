@@ -263,7 +263,8 @@ public sealed class Plugin : IDalamudPlugin
             renderer = liveRug.Status, composition = liveRug.CompositionStatus, map = liveRug.MapStatus,
             music = liveRug.MusicStatus, navmesh = status, hasSupportedCloth = liveRug.HasCloth,
             support = new { updates = liveRug.SupportUpdates, published = liveRug.SupportPublications,
-                visibility = liveRug.SupportVisibility, diagnostics = liveRug.LatestSupportGeometry },
+                visibility = liveRug.SupportVisibility, diagnostics = liveRug.LatestSupportGeometry,
+                lastRejection = liveRug.LastSupportRejection },
             render = liveRug.GetRenderStatistics(), mapProbeActive = liveRug.MapProbeActive,
             experimental = true, movementControl = false, recoveryCommand = "/rug",
         });

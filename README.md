@@ -185,6 +185,17 @@ supported mesh alone does not prove a draw or a displayed pixel.
 `support.diagnostics` retains the existing twenty-second geometry report with
 its own observation time and territory. It is a historical diagnostic snapshot,
 not a current render authorization, and remains readable when file logging stops.
+The same report includes the window's `Updates`, `Published`, `Rays`,
+`MaximumUpdateMilliseconds`, `MaximumBuildMilliseconds` and `VisibilityCounts`.
+Counts are ordered as InvalidScene, Visible, PlayerFloor, CenterFloor,
+ChangedEvidence, FootprintCoverage, OriginClearance and CenterMismatch.
+`support.lastRejection` retains the latest rejected update's timestamp, territory,
+cumulative update number, visibility code (the same ordering), existing reason
+text, ray count and update cost. It can identify a one-frame refusal between IPC
+samples; an old rejection is not evidence that the currently visible rug failed.
+Capturing it copies a value and existing text, without a per-rejection geometry
+walk, native query or newly allocated report.
+
 
 Cloth geometry, map coordinates and lift are published in one immutable render
 packet. A preceding valid packet remains available while the next sample is

@@ -1,7 +1,7 @@
 {
   "objective": "Make the FFXIV rug well-coded and stable in the game",
   "status": "in_progress",
-  "build": "0.0.1.7",
+  "build": "0.0.1.8",
   "offlineTestsPassed": 1613,
   "checks": [
     {
@@ -36,27 +36,27 @@
     },
     {
       "requirement": "Distinguish sampling success from actual render submission and display evidence",
-      "evidence": "Timestamped support/render counters and display captures agree on restored planter rendering. Stationary delta 2218/2218 supported updates and 2217 submissions; bounded motion interval 1466/1468 supported and 1459 submissions. Counters are not display-frame percentages.",
+      "evidence": "Timestamped support/render counters and display captures agree on restored planter rendering. Stationary delta 2218/2218 supported updates and 2217 submissions; bounded motion interval 1466/1468 supported and 1459 submissions. Counters are not display-frame percentages.; last-rejection value snapshot captured a one-frame CenterFloor Pending refusal after a 6.36 ms one-ray update, despite subsequent status samples showing Visible",
       "status": "verified_at_planter"
     },
     {
       "requirement": "Handle plugin unload, reload, logout and resource lifetime without stale draws or failures",
-      "evidence": "Repeated controlled unload/reload and title-screen load succeed; native render locks and leases reviewed; CPU ownership tests pass",
-      "status": "partial_device_resize_and_zone_transition_pending"
+      "evidence": "Repeated controlled unload/reload and title-screen load succeed; native render locks and leases reviewed; CPU ownership tests pass; actual game/display buffers resized 1920x1080 \u2192 1600x900 \u2192 1920x1080 with visible cloth and no fault flags",
+      "status": "reload_and_resize_verified_current_build_client_startup_and_zone_transition_pending"
     },
     {
       "requirement": "Stay responsive and visible through representative motion and terrain",
-      "evidence": "Recorded planter failure repaired. Stationary baseline stayed supported; bounded visual-only target probe recovers, with 2 of 1468 updates withheld. This probe does not move the actual player.",
+      "evidence": "Recorded planter failure repaired. Stationary baseline stayed supported; bounded visual-only target probe recovers, with 2 of 1468 updates withheld. This probe does not move the actual player. Three further probes captured one deadline refusal; subsequent three 20-second windows published all 2978 updates.",
       "status": "planter_recovery_verified_actual_walking_stairs_jump_mount_pending"
     },
     {
       "requirement": "Bound hot-path work and avoid recurring faults or allocation-driven stalls",
-      "evidence": "Existing query deadline and ray caps retained; new submission token is a value type and predicates are cached delegates; broader runtime profiling still needed",
-      "status": "runtime_profiling_pending"
+      "evidence": "20-second timing/counter snapshots: initial window peak update/build 67.16/20.65 ms, subsequent 60 seconds peak 5.65/3.75 ms with 2978/2978 publications. One observed center-floor query deferral after a 6.36 ms one-ray update. Existing 2 ms query deadline and 100-ray cap retained; no new native query or geometry traversal in rejection diagnostics.",
+      "status": "initial_runtime_timings_captured_further_stall_and_allocation_profiling_pending"
     }
   ],
   "nextRuntimeChecks": [
-    "Investigate the two withheld support updates in the bounded motion probe; require real walking/obstacle evidence before broader stability claims",
+    "Investigate cold/loaded-frame timing stalls with actual walking evidence; one-ray 6.36 ms center-floor Pending refusal captured, subsequent 60-second support baseline complete",
     "Exercise movement, stairs, jumping, UI occlusion and zone transitions using measured support and actual display evidence",
     "Check resource lifecycle, frame costs, allocation pressure and Rug errors during a sustained run",
     "Validate canonical installation/startup and reload recovery with only one Rug/FloorMap copy enabled before promoting the candidate"

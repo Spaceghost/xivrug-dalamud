@@ -2,7 +2,6 @@ using System.Diagnostics;
 using System.Numerics;
 using FFXIVClientStructs.FFXIV.Common.Component.BGCollision;
 using XivSurface.Core;
-using XivRug.Rendering;
 
 namespace XivRug.Plugin;
 
@@ -59,7 +58,10 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
     private Vector3 diagnosticPlayerNormal;
     private float diagnosticPlayerGap;
     private readonly Func<bool> withinDeadline;
-    public SupportedClothFrame? Current { get; private set; }
+    public const int VisualRefinementFactor = 3;
+    public sealed record SupportSample(Vector2 Center, Vector2 HalfSize, float AnchorY,
+        ClothMesh Mesh, int SupportVertices, long SupportEpoch, Vector2 SupportCenter, Vector2 SupportHalf);
+    public SupportSample? Current { get; private set; }
     public float? AcceptedPlayerSupportHeight { get; private set; }
     public int RaycastsThisUpdate => rays;
     public bool RefreshDeferredThisUpdate { get; private set; }
@@ -296,15 +298,14 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
         var coarse = ClothSurface.Build(snapshot.Center, snapshot.Half, centerFloor, snapshot.Contacts,
             snapshot.Width, (float)now, motion, snapshot.CellCeilings, pressures,
             snapshot.DiagonalParity, wantedCenter, materialHalf, planarCells: snapshot.PlanarCells, cellLifts: snapshot.CellLifts);
-        var fine = SupportVisualRefinement.Refine(coarse, 3);
         diagnosticSupport = snapshot; diagnosticCoarse = coarse;
-        SupportVisualRefinement.MapMaterial(fine, snapshot.Center, snapshot.Half, wantedCenter, materialHalf);
-        Current = new(wantedCenter, materialHalf, centerFloor, fine, snapshot.Contacts.Length, epoch);
+        Current = new(wantedCenter, materialHalf, centerFloor, coarse, snapshot.Contacts.Length, epoch,
+            snapshot.Center, snapshot.Half);
         Visibility = VisibilityState.Visible;
         ContinuedOriginThisUpdate = continuing;
         var buildMilliseconds = Stopwatch.GetElapsedTime(buildStarted).TotalMilliseconds;
         LastTiming = new(1, rays, queryMilliseconds + buildMilliseconds, queryMilliseconds, buildMilliseconds, originDrift);
-        Status = $"Rolling full-size cloth · {spacing:F2}y collision support / {spacing / 3:F3}y visual mesh · {fine.Indices.Length / 3:N0} triangles · {rays} rays/update"
+        Status = $"Rolling full-size cloth · {spacing:F2}y collision support / {spacing / VisualRefinementFactor:F3}y visual mesh · {coarse.Indices.Length / 3 * VisualRefinementFactor * VisualRefinementFactor:N0} triangles · {rays} rays/update"
             + (continuing ? " · continuous anchor handoff" : "");
     }
 

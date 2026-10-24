@@ -21,7 +21,30 @@ public static class SupportVisualRefinement
         for (var i = 0; i < mesh.UV.Length; i++) mesh.UV[i] = mesh.UV[i] * scale + offset;
     }
 
-    public static ClothMesh Refine(ClothMesh coarse, int factor)
+    // Owned only by ClothContactSolver. Borrowed position/normal arrays never
+    // escape its synchronous Refine -> Update call; other arrays remain fresh.
+    internal sealed class Scratch
+    {
+        private Vector3[] positions = [], normals = [];
+        internal void Reset() { positions = []; normals = []; }
+        internal (Vector3[] Positions, Vector3[] Normals) Prepare(int count)
+        {
+            if (positions.Length != count)
+            {
+                var nextPositions = new Vector3[count]; var nextNormals = new Vector3[count];
+                (positions, normals) = (nextPositions, nextNormals);
+            }
+            Array.Clear(normals);
+            return (positions, normals);
+        }
+    }
+
+    public static ClothMesh Refine(ClothMesh coarse, int factor) => RefineCore(coarse, factor, null);
+
+    internal static ClothMesh RefineForSolver(ClothMesh coarse, int factor, Scratch scratch)
+        => RefineCore(coarse, factor, scratch);
+
+    private static ClothMesh RefineCore(ClothMesh coarse, int factor, Scratch? scratch)
     {
         ArgumentNullException.ThrowIfNull(coarse);
         if (factor is < 1 or > 4 || coarse.Size < 2 || coarse.Size > ClothSurface.MaximumSize)
@@ -43,7 +66,9 @@ public static class SupportVisualRefinement
         foreach (var position in coarse.Positions) if (!MathEx.Finite(position)) throw new ArgumentException("Nonfinite support vertex.");
         if (coarse.GroundMinimum is { } bounds && (bounds.Length != coarse.Positions.Length
             || bounds.Any(value => !float.IsFinite(value)))) throw new ArgumentException("Invalid ground constraints.");
-        var positions = new Vector3[size * size]; var uv = new Vector2[size * size];
+        var (positions, normals) = scratch?.Prepare(size * size)
+            ?? (new Vector3[size * size], new Vector3[size * size]);
+        var uv = new Vector2[size * size];
         var ground = coarse.GroundMinimum is null ? null : new float[size * size];
         for (var z = 0; z < size; z++)
         for (var x = 0; x < size; x++)
@@ -76,7 +101,6 @@ public static class SupportVisualRefinement
             else
             { result[cursor++] = a; result[cursor++] = c; result[cursor++] = b; result[cursor++] = b; result[cursor++] = c; result[cursor++] = d; }
         }
-        var normals = new Vector3[positions.Length];
         for (var i = 0; i < result.Length; i += 3)
         {
             var a = result[i]; var b = result[i + 1]; var c = result[i + 2];

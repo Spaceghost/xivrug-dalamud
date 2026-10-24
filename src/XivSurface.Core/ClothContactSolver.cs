@@ -324,6 +324,7 @@ public sealed class ClothContactSolver
     private Vector2[] coordinates = [];
     private int stateCount;
     private Dictionary<Vector2, (float Height, float Velocity)>? remap;
+    private readonly SupportVisualRefinement.Scratch refinement = new();
     private double previousTime = double.NaN;
     public int LastSubsteps { get; private set; }
 
@@ -331,8 +332,22 @@ public sealed class ClothContactSolver
     {
         heights = velocities = nextHeights = nextVelocities = []; coordinates = [];
         desired = ring = upperBounds = [];
-        stateCount = 0; remap = null;
+        stateCount = 0; remap = null; refinement.Reset();
         previousTime = double.NaN; LastSubsteps = 0;
+    }
+
+    /// <summary>Refine supported coarse geometry and solve it synchronously.
+    /// Only private intermediate positions/normals are reused; every returned
+    /// mesh owns all arrays independently of later refinements and resets.
+    /// Like Update, this stateful solver must be called by one owner thread.</summary>
+    public ClothMesh UpdateRefined(ClothMesh coarse, int factor,
+        Vector2 supportCenter, Vector2 supportHalf, Vector2 materialCenter, Vector2 materialHalf,
+        ReadOnlySpan<ClothFootContact> feet, double now, float visualLift = 0,
+        ReadOnlySpan<ClothImpulse> impulses = default)
+    {
+        var target = SupportVisualRefinement.RefineForSolver(coarse, factor, refinement);
+        SupportVisualRefinement.MapMaterial(target, supportCenter, supportHalf, materialCenter, materialHalf);
+        return Update(target, feet, now, visualLift, impulses);
     }
 
     /// <summary>Caller owns zone/geometry invalidation and calls Reset(). Moving

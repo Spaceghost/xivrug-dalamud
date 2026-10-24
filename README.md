@@ -208,6 +208,14 @@ moving or shrinking support grids. Only the active grid participates in remappin
 retired vertices cannot restore old motion. Published positions and normals remain
 independently owned. A warmed 361-vertex benchmark saves 21,000 allocated bytes
 per grid shift while preserving the reference solver's exact output.
+Refinement and physics now run together in `ClothContactSolver.UpdateRefined`.
+The solver reuses only the unpublished refinement positions and normals, and
+replaces both before returning a mesh. Every output retains independently owned
+positions, normals, UVs, indices and ground bounds. Support-center and material-
+center metadata travel together from the sampler into that operation. The
+ordinary `SupportVisualRefinement.Refine` API still returns independent arrays.
+The reported maximum build cost now includes coarse construction, refinement
+and physics; total update timing remains comparable across these versions.
 
 
 Cloth geometry, map coordinates and lift are published in one immutable render

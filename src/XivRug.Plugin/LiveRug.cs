@@ -279,6 +279,7 @@ internal sealed unsafe partial class LiveRug : IDisposable
         if(config.ClothSurface)
         {
             var clothStarted = Stopwatch.GetTimestamp();
+            double refinementAndSolverMilliseconds = 0;
             var publicationTicket = clothPublication.BeginUpdate();
             try
             {
@@ -299,8 +300,14 @@ internal sealed unsafe partial class LiveRug : IDisposable
                     var feet = physicsFeet;
                     if (feet is not null)
                         feet.TryGetClothContacts(zone, Stopwatch.GetTimestamp() / (double)Stopwatch.Frequency, contacts, out _);
-                    var mesh = clothContact.Update(sampledCloth.Mesh, contacts, clock.Elapsed.TotalSeconds, clothLift, piano.Impulses);
-                    clothFrame = sampledCloth with { Mesh = mesh };
+                    else contacts.Clear(); // No captured feet must mean no spring pressure.
+                    var solveStarted = Stopwatch.GetTimestamp();
+                    var mesh = clothContact.UpdateRefined(sampledCloth.Mesh, ClothContactSampler.VisualRefinementFactor,
+                        sampledCloth.SupportCenter, sampledCloth.SupportHalf, sampledCloth.Center, sampledCloth.HalfSize,
+                        contacts, clock.Elapsed.TotalSeconds, clothLift, piano.Impulses);
+                    refinementAndSolverMilliseconds = Stopwatch.GetElapsedTime(solveStarted).TotalMilliseconds;
+                    clothFrame = new(sampledCloth.Center, sampledCloth.HalfSize, sampledCloth.AnchorY,
+                        mesh, sampledCloth.SupportVertices, sampledCloth.SupportEpoch);
                 }
                 else clothFrame = null;
                 if(clothFrame is {} fabric)
@@ -322,7 +329,7 @@ internal sealed unsafe partial class LiveRug : IDisposable
             catch(Exception ex) { clothPublication.Complete(publicationTicket, null); Status="Cloth preparation stopped: "+ex.GetType().Name; log.Error(ex,"XivRug cloth sampling failed"); clothFrame=null; current=null; }
             // A diagnostic failure propagates to the owner's world-failure
             // boundary, which revokes even an already-completed publication.
-            ReportClothTiming(Stopwatch.GetElapsedTime(clothStarted).TotalMilliseconds);
+            ReportClothTiming(Stopwatch.GetElapsedTime(clothStarted).TotalMilliseconds, refinementAndSolverMilliseconds);
             return;
         }
         clothPublication.Invalidate();
@@ -441,7 +448,7 @@ internal sealed unsafe partial class LiveRug : IDisposable
 
     // Count hidden updates too: logging only a published mesh conceals cache
     // starvation and can make a failed collision path look healthy.
-    private void ReportClothTiming(double updateMilliseconds)
+    private void ReportClothTiming(double updateMilliseconds, double refinementAndSolverMilliseconds)
     {
         var now = clock.Elapsed.TotalSeconds;
         clothUpdates++;
@@ -449,7 +456,7 @@ internal sealed unsafe partial class LiveRug : IDisposable
         clothVisibilityCounts[(int)cloth.Visibility]++;
         clothRays += cloth.RaycastsThisUpdate;
         maximumClothUpdateMilliseconds = Math.Max(maximumClothUpdateMilliseconds, updateMilliseconds);
-        maximumClothBuildMilliseconds = Math.Max(maximumClothBuildMilliseconds, cloth.LastTiming?.BuildMilliseconds ?? 0);
+        maximumClothBuildMilliseconds = Math.Max(maximumClothBuildMilliseconds, (cloth.LastTiming?.BuildMilliseconds ?? 0) + refinementAndSolverMilliseconds);
         if (clothPublication.Current is { } packet && clothPublication.IsCurrent(packet, territory, samplingEpoch))
         {
             var frame = packet.Cloth;

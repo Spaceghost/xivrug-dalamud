@@ -479,23 +479,67 @@ public sealed partial class LocalFloorLayer
         // Large-world float spacing is not permission for a larger correction.
         if (!double.IsFinite(gridSquared) || gridSquared > (double)SeamTolerance * SeamTolerance) return false;
         var best = double.PositiveInfinity;
+        var bestPoint = default(Vector2);
         foreach (var x in xs)
         foreach (var z in zs)
+            Consider(x, z);
+        // X and Z can have different float spacing. A shared-edge point can
+        // lie inside the original one-cell diagonal radius yet be two or more
+        // representable X values away. Intersect the measured portal with each
+        // neighboring grid line instead of widening the radius or face tests.
+        // Both portals matter for measured curb transitions. Work stays bounded
+        // at nine original candidates plus eighteen per measured edge.
+        if (!double.IsFinite(best))
         {
+            AlongEdge(edge.ExitA, edge.ExitB);
+            AlongEdge(edge.EntryA, edge.EntryB);
+        }
+        result = bestPoint;
+        return double.IsFinite(best);
+
+        void AlongEdge(Vector3 a, Vector3 b)
+        {
+            var dx = (double)b.X - a.X; var dz = (double)b.Z - a.Z;
+            for (var i = -1; i <= 1; i++)
+            {
+                var z = i < 0 ? MathF.BitDecrement(rounded.Y) : i > 0 ? MathF.BitIncrement(rounded.Y) : rounded.Y;
+                if (dz != 0)
+                {
+                    var t = ((double)z - a.Z) / dz;
+                    if (t >= 0 && t <= 1)
+                    {
+                        var x = (float)(a.X + dx * t);
+                        Consider(MathF.BitDecrement(x), z); Consider(x, z); Consider(MathF.BitIncrement(x), z);
+                    }
+                }
+                var xLine = i < 0 ? MathF.BitDecrement(rounded.X) : i > 0 ? MathF.BitIncrement(rounded.X) : rounded.X;
+                if (dx != 0)
+                {
+                    var t = ((double)xLine - a.X) / dx;
+                    if (t >= 0 && t <= 1)
+                    {
+                        var zAt = (float)(a.Z + dz * t);
+                        Consider(xLine, MathF.BitDecrement(zAt)); Consider(xLine, zAt); Consider(xLine, MathF.BitIncrement(zAt));
+                    }
+                }
+            }
+        }
+
+        void Consider(float x, float z)
+        {
+            var dx = (double)x - rounded.X; var dz = (double)z - rounded.Y;
+            var distance = dx * dx + dz * dz;
+            if (!double.IsFinite(distance) || distance > gridSquared || distance >= best) return;
             var at = new Vector2(x, z);
             var fraction = PathFraction(from, to, at);
             if (!double.IsFinite(fraction) || fraction < minimum || fraction > 1
-                || Math.Abs(fraction - crossing) > 1e-5) continue;
-            if (!SurfaceHeight(before,at, out var firstY) || !SurfaceHeight(after,at, out var secondY)) continue;
+                || Math.Abs(fraction - crossing) > 1e-5) return;
+            if (!SurfaceHeight(before,at, out var firstY) || !SurfaceHeight(after,at, out var secondY)) return;
             var first = new Vector3(x, firstY, z); var second = new Vector3(x, secondY, z);
             if (!SurfaceContains(before,first) || !SurfaceContains(after,second)
-                || !OnPortal(first, edge.ExitA, edge.ExitB) || !OnPortal(second, edge.EntryA, edge.EntryB)) continue;
-            var dx = (double)x - rounded.X; var dz = (double)z - rounded.Y;
-            var distance = dx * dx + dz * dz;
-            if (distance > gridSquared || distance >= best) continue;
-            best = distance; result = at;
+                || !OnPortal(first, edge.ExitA, edge.ExitB) || !OnPortal(second, edge.EntryA, edge.EntryB)) return;
+            best = distance; bestPoint = at;
         }
-        return double.IsFinite(best);
 
         static bool OnPortal(Vector3 point, Vector3 a, Vector3 b)
         {

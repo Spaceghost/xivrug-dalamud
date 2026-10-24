@@ -1,9 +1,14 @@
 {
   "objective": "Make the FFXIV rug well-coded and stable in the game",
   "status": "in_progress",
-  "build": "0.0.1.5",
-  "offlineTestsPassed": 1600,
+  "build": "0.0.1.6",
+  "offlineTestsPassed": 1605,
   "checks": [
+    {
+      "requirement": "Represent a valid shared-edge crossing when world axes have unequal float spacing",
+      "evidence": "Captured Limsa portal mismatch now replays successfully with unchanged containment and correction bounds; five new regression cases pass. Live remaining failure is an uncovered corridor, not certification of overall visibility.",
+      "status": "captured_case_offline_verified_remaining_live_failure"
+    },
     {
       "requirement": "Render geometry, projection and lift from one current supported publication",
       "evidence": "Immutable packet with cancellation tickets; seven regression cases cover replacement, failure, concurrent canceled producers, wrong scene and allocation-free render reads; final submission and optional character-pose assistance use the publication",
@@ -26,8 +31,8 @@
     },
     {
       "requirement": "Distinguish sampling success from actual render submission and display evidence",
-      "evidence": "MCP render counters increment from actual renderer submission counters, independently of support publication counts; submission recency and refusal/fault state are exposed",
-      "status": "implemented_in_world_sampling_pending"
+      "evidence": "Actual render counters plus timestamped 20-second geometry report exposed in MCP. Candidate .6 capture distinguishes zero submissions from 4426 attempted support updates; 11/49 vertices and 11/36 cells remain missing.",
+      "status": "diagnostics_verified_no_successful_display_validation"
     },
     {
       "requirement": "Handle plugin unload, reload, logout and resource lifetime without stale draws or failures",
@@ -36,8 +41,8 @@
     },
     {
       "requirement": "Stay responsive and visible through representative motion and terrain",
-      "evidence": "Offline slopes, stairs, portals, bounded query scheduling and finite discovery tests pass; visual follow probe verified at one location",
-      "status": "actual_walking_stairs_jump_mount_and_frame_stress_pending"
+      "evidence": "Recorded Limsa movement: 328/3001 supported publications; stationary baseline: 0/2432. Candidate .6 planter check: 0/4426 publications and zero render attempts. Rug visibly disappears near planter and does not recover. Offline portal rounding repair does not resolve remaining incomplete support.",
+      "status": "live_failure_reproduced_repair_in_progress"
     },
     {
       "requirement": "Bound hot-path work and avoid recurring faults or allocation-driven stalls",
@@ -46,6 +51,7 @@
     }
   ],
   "nextRuntimeChecks": [
+    "Repair the captured planter support discovery/clearance failure; require visible recovery and sustained actual render submissions at that exact stationary location before map and motion checks",
     "With a logged-in character, establish support and render baselines and capture the visible rug",
     "Run the ten-second mapprobe and verify woven rendering continues, then map rendering recovers automatically",
     "Exercise native and background composition, check draw refusals and recovery, and restore the saved mode",

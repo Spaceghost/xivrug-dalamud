@@ -154,6 +154,12 @@ between the measured upper hit and the expected floor height. Refresh must find
 the exact original face before renewing it; neither an upper surface nor a
 pending query renews support. This fixes repeated whole-layer resets and a
 permanent missing vertex observed at an overlapping collision edge in Limsa.
+Shared-edge path reconstruction also handles unequal X/Z float spacing. When
+the immediate neighboring grid points fail, it tests intersections with the
+measured portal inside the original correction radius. It keeps both face
+containment tests, portal membership, crossing order and freshness requirements.
+The captured Limsa planter corridor is a regression fixture; it previously
+failed indefinitely even with an unlimited query budget.
 Bounded diagnostics every 20 seconds count all updates, published and hidden
 frames, deferred-refresh publications, ray calls, maximum update/build cost
 and measured visible-center speed.
@@ -166,6 +172,9 @@ The `render` status separately reports draw attempts, actual CPU-side GPU
 submissions, time since the last submission, GPU fault/foot-gate state and
 whether the woven material is substituting for unavailable cartography. A
 supported mesh alone does not prove a draw or a displayed pixel.
+`support.diagnostics` retains the existing twenty-second geometry report with
+its own observation time and territory. It is a historical diagnostic snapshot,
+not a current render authorization, and remains readable when file logging stops.
 
 Cloth geometry, map coordinates and lift are published in one immutable render
 packet. A preceding valid packet remains available while the next sample is

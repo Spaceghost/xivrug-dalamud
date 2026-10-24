@@ -426,6 +426,8 @@ internal sealed unsafe partial class LiveRug : IDisposable
 
     public long SupportUpdates { get; private set; }
     public long SupportPublications { get; private set; }
+    public sealed record SupportGeometryReport(DateTimeOffset ObservedAt, uint TerritoryId, string Geometry);
+    public SupportGeometryReport? LatestSupportGeometry { get; private set; }
     public string SupportVisibility => clothPublication.Current is null && cloth.Visibility == ClothContactSampler.VisibilityState.Visible
         ? "Unpublished" : cloth.Visibility.ToString();
 
@@ -463,7 +465,9 @@ internal sealed unsafe partial class LiveRug : IDisposable
         log.Information("XivRug support outcome counts: invalid={Invalid}, visible={Visible}, player floor={Player}, center floor={Center}, changed evidence={Changed}, incomplete footprint={Footprint}, origin clearance={Origin}, center mismatch={Mismatch}",
             clothVisibilityCounts[0], clothVisibilityCounts[1], clothVisibilityCounts[2], clothVisibilityCounts[3],
             clothVisibilityCounts[4], clothVisibilityCounts[5], clothVisibilityCounts[6], clothVisibilityCounts[7]);
-        log.Information("XivRug floor geometry: {Geometry}; global cloth lift={Lift:F4}y", cloth.DescribeGeometry(), clothLift);
+        var geometry = cloth.DescribeGeometry();
+        LatestSupportGeometry = new(DateTimeOffset.UtcNow, territory, geometry);
+        log.Information("XivRug floor geometry: {Geometry}; global cloth lift={Lift:F4}y", geometry, clothLift);
         log.Information("XivRug world lighting: {Lighting}", clothGpu.LightingDiagnostic);
         log.Information("XivRug native shadows: {Shadow}", clothGpu.ShadowDiagnostic);
         clothUpdates = clothPublished = clothRays = clothDeferredRefresh = clothContinuedOrigin = 0;

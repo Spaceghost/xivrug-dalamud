@@ -37,7 +37,7 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
     private readonly Func<Vector3, Vector3, ClothClearanceCast> castClearance;
     private double queryTime;
     private bool clearanceHitFloor;
-    private int floorChordHits, wallHits, pathPending, pathUnknown;
+    private int floorChordHits, wallHits, raisedObstacleHits, pathPending, pathUnknown;
     private int chordObservationAttempts, retainedChordHits;
     private int cellSuccess, cellPending, cellUnknown;
     private string firstCellFailure = "none";
@@ -87,7 +87,7 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
             for (var i = 0; i < sample.Contacts.Length; i++)
                 uplift = Math.Max(uplift, ground[i] - sample.Contacts[i].Y);
         }
-        return FormattableString.Invariant($"collision faces flat={geometry.FlatFaces}, sloped={geometry.SlopedFaces}, risers={geometry.RiserFaces}, min normalY={geometry.MinimumNormalY:F4}; player normal=({diagnosticPlayerNormal.X:F4},{diagnosticPlayerNormal.Y:F4},{diagnosticPlayerNormal.Z:F4}), floor gap={diagnosticPlayerGap:F4}y; planar cells={planar}/{cells}, max cell uplift={uplift:F4}y; current support={Current is not null}; clearance floor chords={floorChordHits}, retained exact floor hits={retainedChordHits}/{chordObservationAttempts}, walls={wallHits}, path pending/unknown={pathPending}/{pathUnknown}, first={firstClearanceFailure}; cell success/pending/unknown={cellSuccess}/{cellPending}/{cellUnknown}, first={firstCellFailure}; last refresh failure={layer.LastRefreshFailure}; {support?.DescribeCoverage(diagnosticCenter, queryTime)}; last failed vertex={failedVertex} {failedVertexPhase} {failedVertexResult}");
+        return FormattableString.Invariant($"collision faces flat={geometry.FlatFaces}, sloped={geometry.SlopedFaces}, risers={geometry.RiserFaces}, min normalY={geometry.MinimumNormalY:F4}; player normal=({diagnosticPlayerNormal.X:F4},{diagnosticPlayerNormal.Y:F4},{diagnosticPlayerNormal.Z:F4}), floor gap={diagnosticPlayerGap:F4}y; planar cells={planar}/{cells}, max cell uplift={uplift:F4}y; current support={Current is not null}; clearance floor chords={floorChordHits}, retained exact floor hits={retainedChordHits}/{chordObservationAttempts}, walls={wallHits} (raised objects={raisedObstacleHits}), path pending/unknown={pathPending}/{pathUnknown}, first={firstClearanceFailure}; cell success/pending/unknown={cellSuccess}/{cellPending}/{cellUnknown}, first={firstCellFailure}; last refresh failure={layer.LastRefreshFailure}; {support?.DescribeCoverage(diagnosticCenter, queryTime)}; last failed vertex={failedVertex} {failedVertexPhase} {failedVertexResult}");
     }
 
     public ClothContactSampler()
@@ -119,7 +119,7 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
         queryTime = now;
         diagnosticCenter = wantedCenter;
         replayCopiedThisUpdate = false;
-        floorChordHits = wallHits = pathPending = pathUnknown = 0;
+        floorChordHits = wallHits = raisedObstacleHits = pathPending = pathUnknown = 0;
         chordObservationAttempts = retainedChordHits = 0;
         cellSuccess = cellPending = cellUnknown = 0;
         firstCellFailure = "none";
@@ -516,6 +516,15 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
             // wall does not become a clear segment or a traversable floor.
             var connector = false;
             var measuredHit = new LayerFloorHit(hit.Point, triangle);
+            // A bevel on a raised prop may be walkable in isolation while
+            // overlapping our measured lower floor. Stop at its actual hit;
+            // do not demand a nonexistent floor portal through the object.
+            // TryVertex still measures the compressed contact and every cell.
+            if (layer.Layer.IsRaisedObstacle(from, to, measuredHit, withinDeadline))
+            {
+                wallHits++; raisedObstacleHits++;
+                return new(ClothClearanceResult.Blocked, hit.Point);
+            }
             if (!triangle.Walkable && layer.Layer.IsMeasuredSupport(measuredHit))
             {
                 connector = layer.Layer.Contains(triangle);

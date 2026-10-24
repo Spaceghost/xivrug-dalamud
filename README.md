@@ -160,6 +160,16 @@ measured portal inside the original correction radius. It keeps both face
 containment tests, portal membership, crossing order and freshness requirements.
 The captured Limsa planter corridor is a regression fixture; it previously
 failed indefinitely even with an unlimited query budget.
+Raised objects with sloped faces no longer force an impossible floor-path search.
+A native clearance hit above a fresh, locally reached floor can block the rug
+without being admitted as a floor continuation. The hit must lie on the actual
+cast segment and its own measured triangle; the lower floor must contain that
+XZ. Compression stops before the hit and still requires the resulting contacts
+and complete cells to pass their usual floor checks. Connected ramps retain
+the surface-path behavior. The captured Limsa planter regression recovers in-game;
+representative walking, jumping, zone transitions and broader profiling remain
+part of the unfinished stability audit.
+
 Bounded diagnostics every 20 seconds count all updates, published and hidden
 frames, deferred-refresh publications, ray calls, maximum update/build cost
 and measured visible-center speed.

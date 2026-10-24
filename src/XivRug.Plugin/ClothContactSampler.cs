@@ -15,7 +15,6 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
     public VisibilityState Visibility { get; private set; }
     public sealed record Timing(int Frames, int Raycasts, double AgeMilliseconds,
         double MaximumQueryMilliseconds, double BuildMilliseconds, float TargetDrift);
-    private const double QueryBudgetMilliseconds = 2;
     private const int MaximumRaysPerUpdate = 100;
     // Explicit tradeoff: .4y support / ~.133y visual vertices at default2y
     // radius. Large rugs keep a bounded support count at a coarser spacing.
@@ -53,6 +52,11 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
     private int rays;
     private int queryAllowanceEnd;
     private long queryStarted;
+    private TimeSpan queryPauseStarted;
+    private readonly ClothQueryBudget queryBudget = new();
+    public bool UsedPauseCredit => queryBudget.UsedPauseCredit;
+    public bool RequiredFloorUsedPauseCredit { get; private set; }
+    public double PauseCreditMilliseconds => queryBudget.PauseCreditMilliseconds;
     private RollingSupportSnapshot? diagnosticSupport;
     private ClothMesh? diagnosticCoarse;
     private Vector3 diagnosticPlayerNormal;
@@ -95,8 +99,22 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
     public ClothContactSampler()
     {
         LocalFloorLayer.PrepareMaintenance();
-        withinDeadline = () => Stopwatch.GetElapsedTime(queryStarted).TotalMilliseconds < QueryBudgetMilliseconds;
+        withinDeadline = WithinQueryDeadline;
         castClearance = CastClearance;
+    }
+
+    private bool WithinQueryDeadline()
+    {
+        if (queryBudget.Expired) return false;
+        var elapsed = Stopwatch.GetElapsedTime(queryStarted).TotalMilliseconds;
+        // The ordinary path needs no repeated runtime pause-counter reads.
+        if (elapsed < ClothQueryBudget.WorkMilliseconds || elapsed >= ClothQueryBudget.MaxElapsedMilliseconds)
+            return queryBudget.CanContinue(elapsed, 0);
+        var pauseDelta = GC.GetTotalPauseDuration() - queryPauseStarted;
+        // Read time again after the counter: a GC or scheduling pause during
+        // that read must not let an old timestamp bypass the elapsed ceiling.
+        elapsed = Stopwatch.GetElapsedTime(queryStarted).TotalMilliseconds;
+        return queryBudget.CanContinue(elapsed, pauseDelta.TotalMilliseconds);
     }
 
     public void Reset()
@@ -118,6 +136,7 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
         AcceptedPlayerSupportHeight = null;
         LastTiming = null;
         RefreshDeferredThisUpdate = false;
+        RequiredFloorUsedPauseCredit = false;
         ContinuedOriginThisUpdate = false;
         queryTime = now;
         diagnosticCenter = wantedCenter;
@@ -128,6 +147,9 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
         firstCellFailure = "none";
         firstClearanceFailure = "none";
         rays = 0; queryAllowanceEnd = MaximumRaysPerUpdate; queryStarted = Stopwatch.GetTimestamp();
+        queryBudget.Reset();
+        queryPauseStarted = GC.GetTotalPauseDuration();
+        var queryCollectionsStarted = GC.CollectionCount(0);
         if (zone == 0 || !Finite(wantedCenter) || !Finite(wantedHalf) || wantedHalf.X <= 0 || wantedHalf.Y <= 0
             || !double.IsFinite(now) || now < 0) { Reset(); return; }
         if (zone != territory || wantedHalf != half)
@@ -165,10 +187,14 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
         var centerHit = playerHit;
         var centerResult = Vector2.DistanceSquared(wantedCenter, new(playerHit.Position.X, playerHit.Position.Z)) <= 1e-10f
             ? LayerQueryResult.Success : QueryFloor(wantedCenter, out centerHit);
+        RequiredFloorUsedPauseCredit = queryBudget.UsedPauseCredit;
         if (centerResult != LayerQueryResult.Success)
         {
             Visibility = VisibilityState.CenterFloor;
-            Status = FormattableString.Invariant($"Hidden: current center layer discovery {centerResult}. Player query stage={Stopwatch.GetElapsedTime(queryStarted, playerQueryFinished).TotalMilliseconds:F3}ms; layer maintenance={Stopwatch.GetElapsedTime(playerQueryFinished, layerMaintenanceFinished).TotalMilliseconds:F3}ms; center query={Stopwatch.GetElapsedTime(layerMaintenanceFinished).TotalMilliseconds:F3}ms.");
+            var pauseDelta = GC.GetTotalPauseDuration() - queryPauseStarted;
+            var collections = GC.CollectionCount(0) - queryCollectionsStarted;
+            var failedAt = Stopwatch.GetTimestamp();
+            Status = FormattableString.Invariant($"Hidden: current center layer discovery {centerResult}. Player query stage={Stopwatch.GetElapsedTime(queryStarted, playerQueryFinished).TotalMilliseconds:F3}ms; layer maintenance={Stopwatch.GetElapsedTime(playerQueryFinished, layerMaintenanceFinished).TotalMilliseconds:F3}ms; center query={Stopwatch.GetElapsedTime(layerMaintenanceFinished, failedAt).TotalMilliseconds:F3}ms; GC pause counter delta={pauseDelta.TotalMilliseconds:F3}ms; gen0 collections={collections}.");
             return;
         }
         var centerFloor = centerHit.Position.Y;

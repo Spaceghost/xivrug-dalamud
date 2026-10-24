@@ -143,9 +143,18 @@ pass spread material compression across neighboring fabric; the map bends with
 the cloth. This is not a full cloth simulator or proof against every sub-cell
 obstacle. Scene-depth rejection and final shared contact constraints remain independent.
 
-Sampling retains a 2 ms deadline and now a 100-ray-per-update bound, including
-actual-player floor, current-center floor and center-wall checks. One native
-query can overrun its deadline; mesh construction is measured separately.
+Sampling normally stops admitting work after 2 ms, with a 100-ray-per-update
+bound including actual-player floor, current-center floor and center-wall checks.
+A reported increase in process GC pause time can contribute up to 6 ms of pause
+allowance, but no new query work is admitted at 8 ms elapsed. Invalid counters,
+clock rollback, or an already expired budget cannot create more time. This is
+bounded pause accounting, not a thread CPU timer: process counters include GC
+suspension coordination. Native calls already running can overrun either limit;
+mesh construction is measured separately. Cache and foot freshness still use
+unadjusted wall time, and every required floor/clearance hit remains mandatory.
+Pause accounting reads [.NET's cumulative GC-pause counter](https://learn.microsoft.com/en-us/dotnet/api/system.gc.gettotalpauseduration?view=net-10.0).
+The counter is sampled after the start timestamp and elapsed time is reread
+after an over-budget counter check; stale pre-read time cannot bypass the cap.
 Once the required current-player and center checks succeed, an exhausted
 optional-refresh deadline does not hide otherwise complete, fresh support.
 Missing, expired or wrong-layer support still hides the rug.
@@ -197,6 +206,11 @@ Capturing it copies a value and existing text, without a per-rejection geometry
 walk, native query or newly allocated report.
 Center-floor failures also report elapsed player-query, layer-maintenance and
 center-query stages. These are wall-clock intervals, not native-call CPU profiles.
+They also include the GC pause-counter and generation-zero collection deltas
+for that query interval. Twenty-second snapshots report `PauseCreditUpdates`,
+`RequiredFloorPauseCreditUpdates` and `MaximumPauseCreditMilliseconds`. These
+count admitted work, not guaranteed publications or rendered frames. When every
+update in a window publishes, its admitted required-floor updates also published.
 The sampler prepares the managed layer-retirement path during construction, before
 framework callbacks. A bounded, isolated two-face layer exercises collection removal
 and graph cleanup, then becomes unreachable. Its synthetic faces never enter the
@@ -322,7 +336,7 @@ an exhausted deadline retain the conservative cell bound. Nonplanar cells still
 use their measured upper envelope rather than claiming complete terrain proof.
 Horizontal collision rays clamp obstructed contacts and gather the cloth;
 non-colliding brush and foliage do not enter these probes. The rolling support
-cache, 100-ray cap and approximately 2 ms sampling deadline apply here too.
+cache, 100-ray cap and bounded sampling budget described above apply here too.
 Only a complete, current window can render; unknown support hides the surface.
 
 These finite probes cannot establish every surface between samples. Thin

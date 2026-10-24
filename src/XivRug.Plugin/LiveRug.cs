@@ -90,6 +90,8 @@ internal sealed unsafe partial class LiveRug : IDisposable
     private double refresh;
     private double nextClothTiming;
     private int clothUpdates, clothPublished, clothRays, clothDeferredRefresh, clothContinuedOrigin;
+    private int clothPauseCreditUpdates, requiredFloorPauseCreditUpdates;
+    private double maximumClothPauseCreditMilliseconds;
     private readonly int[] clothVisibilityCounts = new int[8];
     private double maximumClothUpdateMilliseconds, maximumClothBuildMilliseconds;
     private float maximumClothSpeed;
@@ -435,7 +437,8 @@ internal sealed unsafe partial class LiveRug : IDisposable
     public long SupportPublications { get; private set; }
     public sealed record SupportGeometryReport(DateTimeOffset ObservedAt, uint TerritoryId, string Geometry,
         int Updates, int Published, int Rays, double MaximumUpdateMilliseconds,
-        double MaximumBuildMilliseconds, int[] VisibilityCounts);
+        double MaximumBuildMilliseconds, int[] VisibilityCounts, int PauseCreditUpdates,
+        double MaximumPauseCreditMilliseconds, int RequiredFloorPauseCreditUpdates);
     public SupportGeometryReport? LatestSupportGeometry { get; private set; }
     // A value snapshot of the actual rejected update survives the 200 ms IPC
     // sampling interval. Reuse the sampler's existing status text; do not run
@@ -455,6 +458,9 @@ internal sealed unsafe partial class LiveRug : IDisposable
         SupportUpdates++;
         clothVisibilityCounts[(int)cloth.Visibility]++;
         clothRays += cloth.RaycastsThisUpdate;
+        if (cloth.UsedPauseCredit) clothPauseCreditUpdates++;
+        if (cloth.RequiredFloorUsedPauseCredit) requiredFloorPauseCreditUpdates++;
+        maximumClothPauseCreditMilliseconds = Math.Max(maximumClothPauseCreditMilliseconds, cloth.PauseCreditMilliseconds);
         maximumClothUpdateMilliseconds = Math.Max(maximumClothUpdateMilliseconds, updateMilliseconds);
         maximumClothBuildMilliseconds = Math.Max(maximumClothBuildMilliseconds, (cloth.LastTiming?.BuildMilliseconds ?? 0) + refinementAndSolverMilliseconds);
         if (clothPublication.Current is { } packet && clothPublication.IsCurrent(packet, territory, samplingEpoch))
@@ -490,11 +496,13 @@ internal sealed unsafe partial class LiveRug : IDisposable
         var geometry = cloth.DescribeGeometry();
         LatestSupportGeometry = new(DateTimeOffset.UtcNow, territory, geometry,
             clothUpdates, clothPublished, clothRays, maximumClothUpdateMilliseconds,
-            maximumClothBuildMilliseconds, (int[])clothVisibilityCounts.Clone());
+            maximumClothBuildMilliseconds, (int[])clothVisibilityCounts.Clone(),
+            clothPauseCreditUpdates, maximumClothPauseCreditMilliseconds, requiredFloorPauseCreditUpdates);
         log.Information("XivRug floor geometry: {Geometry}; global cloth lift={Lift:F4}y", geometry, clothLift);
         log.Information("XivRug world lighting: {Lighting}", clothGpu.LightingDiagnostic);
         log.Information("XivRug native shadows: {Shadow}", clothGpu.ShadowDiagnostic);
         clothUpdates = clothPublished = clothRays = clothDeferredRefresh = clothContinuedOrigin = 0;
+        clothPauseCreditUpdates = requiredFloorPauseCreditUpdates = 0; maximumClothPauseCreditMilliseconds = 0;
         Array.Clear(clothVisibilityCounts);
         maximumClothUpdateMilliseconds = maximumClothBuildMilliseconds = 0;
         maximumClothSpeed = 0;

@@ -65,6 +65,36 @@ public sealed class ClothSolverScratchTests
     }
 
     [Fact]
+    public void MovingAndShrinkingWarmGridsAllocateOnlyTheirIndependentMeshOutput()
+    {
+        ClothMesh[] targets = [Grid(19, Vector2.Zero), Grid(17, new(.2f, 0)), Grid(19, new(.4f, 0))];
+        var solver = new ClothContactSolver();
+        for (var i = 0; i < 60; i++) solver.Update(targets[i % targets.Length], [], i / 120d);
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 60; i < 120; i++)
+            GC.KeepAlive(solver.Update(targets[i % targets.Length], [], i / 120d));
+        var perUpdate = (GC.GetAllocatedBytesForCurrentThread() - before) / 60;
+        Assert.InRange(perUpdate, 17 * 17 * 24, 19 * 19 * 24 + 1024);
+    }
+
+    [Fact]
+    public void RetiredGridTailNeverResurrectsOldSpringMotionAfterShrinking()
+    {
+        var actual = new ClothContactSolver();
+        var expected = new FrozenAllocatingClothContactSolver();
+        for (var i = 0; i < 30; i++)
+        {
+            var mesh = Grid(i is >= 12 and < 20 ? 5 : 11, Vector2.Zero);
+            for (var j = 0; j < mesh.Positions.Length; j++)
+                mesh.Positions[j].Y = i < 12 ? .1f : .02f;
+            var result = actual.Update(mesh, [], i / 60d);
+            var reference = expected.Update(mesh, [], i / 60d);
+            Assert.Equal(reference.Positions, result.Positions);
+            Assert.Equal(reference.Normals, result.Normals);
+        }
+    }
+
+    [Fact]
     public void SizeChangesAndResetNeverMutatePreviouslyPublishedGeometry()
     {
         var solver = new ClothContactSolver();

@@ -322,6 +322,8 @@ public sealed class ClothContactSolver
     // published mesh; keep immutable position/normal outputs independently owned.
     private float[] desired = [], ring = [], upperBounds = [];
     private Vector2[] coordinates = [];
+    private int stateCount;
+    private Dictionary<Vector2, (float Height, float Velocity)>? remap;
     private double previousTime = double.NaN;
     public int LastSubsteps { get; private set; }
 
@@ -329,6 +331,7 @@ public sealed class ClothContactSolver
     {
         heights = velocities = nextHeights = nextVelocities = []; coordinates = [];
         desired = ring = upperBounds = [];
+        stateCount = 0; remap = null;
         previousTime = double.NaN; LastSubsteps = 0;
     }
 
@@ -431,29 +434,40 @@ public sealed class ClothContactSolver
     private void PrepareState(ClothMesh target, float[] ground, bool reset)
     {
         var count = target.Positions.Length;
-        var same = !reset && coordinates.Length == count;
+        var same = !reset && stateCount == count;
         if (same)
             for (var i = 0; i < count; i++)
                 if (coordinates[i] != new Vector2(target.Positions[i].X, target.Positions[i].Z)) { same = false; break; }
         if (same) return;
         Dictionary<Vector2, (float Height, float Velocity)>? previous = null;
-        if (!reset && coordinates.Length > 0)
+        if (!reset && stateCount > 0)
         {
-            previous = new(coordinates.Length);
-            for (var i = 0; i < coordinates.Length; i++)
+            // Copy values before overwriting private state. Capacity follows
+            // the largest admitted grid, but only the active prefix belongs
+            // to this generation; shrunken windows must not resurrect its tail.
+            previous = remap ??= new(stateCount);
+            previous.Clear();
+            for (var i = 0; i < stateCount; i++)
                 // Collapsed wall nodes share coordinates but may have distinct
                 // material folds. Do not guess which old fold a new vertex owns.
                 if (!previous.TryAdd(coordinates[i], (heights[i], velocities[i]))) previous[coordinates[i]] = (float.NaN, 0);
         }
-        heights = new float[count]; velocities = new float[count];
-        nextHeights = new float[count]; nextVelocities = new float[count]; coordinates = new Vector2[count];
+        if (heights.Length < count)
+        {
+            var newHeights = new float[count]; var newVelocities = new float[count];
+            var newNextHeights = new float[count]; var newNextVelocities = new float[count];
+            var newCoordinates = new Vector2[count];
+            (heights, velocities, nextHeights, nextVelocities, coordinates) =
+                (newHeights, newVelocities, newNextHeights, newNextVelocities, newCoordinates);
+        }
+        stateCount = count;
         for (var i = 0; i < count; i++)
         {
             var p = target.Positions[i]; var key = new Vector2(p.X, p.Z); coordinates[i] = key;
             var minimum = ground[i] + ClothContactConstraint.Clearance;
             if (previous is not null && previous.TryGetValue(key, out var state) && float.IsFinite(state.Height))
             { heights[i] = Math.Max(minimum, state.Height); velocities[i] = state.Height < minimum ? 0 : state.Velocity; }
-            else heights[i] = Math.Max(minimum, p.Y);
+            else { heights[i] = Math.Max(minimum, p.Y); velocities[i] = 0; }
         }
     }
 

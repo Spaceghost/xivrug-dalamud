@@ -145,6 +145,7 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
             ClothPlayerSupportQuery.RetainedLayer => QueryFloor(new(player.X, player.Z), out playerHit) == LayerQueryResult.Success,
             _ => false,
         };
+        var playerQueryFinished = Stopwatch.GetTimestamp();
         if (!playerMeasured || !playerSupport.Confirm(playerHit, layer.Layer))
         { Visibility = VisibilityState.PlayerFloor; Status = "Hidden: no nearby confirmed player floor layer."; return; }
         var playerFloor = playerHit.Position.Y;
@@ -153,6 +154,7 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
         AcceptedPlayerSupportHeight = playerFloor;
         if (!layer.BeginFrame(playerHit, now, wantedCenter, Math.Max(half.X, half.Y) * 1.414214f + 1.2f))
         { support!.Reset(); clearance.Reset(); requestedOrigin = default; epoch++; }
+        var layerMaintenanceFinished = Stopwatch.GetTimestamp();
         // At rest, the requested center is the very point measured by the
         // mandatory player ray. Reuse that actual hit even when the native
         // call overran this frame's budget; do not hide a fresh supported rug
@@ -161,7 +163,11 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
         var centerResult = Vector2.DistanceSquared(wantedCenter, new(playerHit.Position.X, playerHit.Position.Z)) <= 1e-10f
             ? LayerQueryResult.Success : QueryFloor(wantedCenter, out centerHit);
         if (centerResult != LayerQueryResult.Success)
-        { Visibility = VisibilityState.CenterFloor; Status = $"Hidden: current center layer discovery {centerResult}."; return; }
+        {
+            Visibility = VisibilityState.CenterFloor;
+            Status = FormattableString.Invariant($"Hidden: current center layer discovery {centerResult}. Player query stage={Stopwatch.GetElapsedTime(queryStarted, playerQueryFinished).TotalMilliseconds:F3}ms; layer maintenance={Stopwatch.GetElapsedTime(playerQueryFinished, layerMaintenanceFinished).TotalMilliseconds:F3}ms; center query={Stopwatch.GetElapsedTime(layerMaintenanceFinished).TotalMilliseconds:F3}ms.");
+            return;
+        }
         var centerFloor = centerHit.Position.Y;
         // A completed current-center hit remains valid if its native call
         // overran the work deadline. Stop optional refresh queries, not a

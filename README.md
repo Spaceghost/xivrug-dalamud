@@ -195,6 +195,14 @@ text, ray count and update cost. It can identify a one-frame refusal between IPC
 samples; an old rejection is not evidence that the currently visible rug failed.
 Capturing it copies a value and existing text, without a per-rejection geometry
 walk, native query or newly allocated report.
+Center-floor failures also report elapsed player-query, layer-maintenance and
+center-query stages. These are wall-clock intervals, not native-call CPU profiles.
+
+The cloth solver retains private spring buffers and its coordinate remap across
+moving or shrinking support grids. Only the active grid participates in remapping;
+retired vertices cannot restore old motion. Published positions and normals remain
+independently owned. A warmed 361-vertex benchmark saves 21,000 allocated bytes
+per grid shift while preserving the reference solver's exact output.
 
 
 Cloth geometry, map coordinates and lift are published in one immutable render

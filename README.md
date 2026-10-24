@@ -197,6 +197,11 @@ Capturing it copies a value and existing text, without a per-rejection geometry
 walk, native query or newly allocated report.
 Center-floor failures also report elapsed player-query, layer-maintenance and
 center-query stages. These are wall-clock intervals, not native-call CPU profiles.
+The sampler prepares the managed layer-retirement path during construction, before
+framework callbacks. A bounded, isolated two-face layer exercises collection removal
+and graph cleanup, then becomes unreachable. Its synthetic faces never enter the
+live layer or native queries. This moves a reproduced first-use cleanup cost out
+of the live query deadline; it cannot prevent arbitrary scheduling or GC pauses.
 
 The cloth solver retains private spring buffers and its coordinate remap across
 moving or shrinking support grids. Only the active grid participates in remapping;

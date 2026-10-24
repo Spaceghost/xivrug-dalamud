@@ -1,8 +1,8 @@
 {
   "objective": "Make the FFXIV rug well-coded and stable in the game",
   "status": "in_progress",
-  "build": "0.0.1.9",
-  "offlineTestsPassed": 1615,
+  "build": "0.0.1.10",
+  "offlineTestsPassed": 1617,
   "checks": [
     {
       "requirement": "Keep cloth visible when raised props overlap the reached floor",
@@ -51,13 +51,13 @@
     },
     {
       "requirement": "Bound hot-path work and avoid recurring faults or allocation-driven stalls",
-      "evidence": "20-second timing/counter snapshots: initial window peak update/build 67.16/20.65 ms, subsequent 60 seconds peak 5.65/3.75 ms with 2978/2978 publications. One observed center-floor query deferral after a 6.36 ms one-ray update. Existing 2 ms query deadline and 100-ray cap retained; no new native query or geometry traversal in rejection diagnostics. Candidate .9 reuses private solver buffers/remap: warmed 361-vertex moving-grid solver allocations 12984 to 8784 bytes/frame, 21000 bytes saved per shift; mesh outputs remain independently owned. Two added regression tests preserve reference physics and bounded warm allocation. A 6.40 ms refusal still occurred; stage timings added to narrow future failures. Final candidate timing reproduction: player stage 0.024 ms, maintenance 6.309 ms, center 0.003 ms. Maintenance is isolated, but computation/JIT/GC/scheduling cause remains unproven.",
-      "status": "moving_grid_allocation_reduced_runtime_stall_cause_unresolved"
+      "evidence": "20-second timing/counter snapshots: initial window peak update/build 67.16/20.65 ms, subsequent 60 seconds peak 5.65/3.75 ms with 2978/2978 publications. One observed center-floor query deferral after a 6.36 ms one-ray update. Existing 2 ms query deadline and 100-ray cap retained; no new native query or geometry traversal in rejection diagnostics. Candidate .9 reuses private solver buffers/remap: warmed 361-vertex moving-grid solver allocations 12984 to 8784 bytes/frame, 21000 bytes saved per shift; mesh outputs remain independently owned. Two added regression tests preserve reference physics and bounded warm allocation. A 6.40 ms refusal still occurred; stage timings added to narrow future failures. Final candidate timing reproduction: player stage 0.024 ms, maintenance 6.309 ms, center 0.003 ms. Maintenance is isolated, but computation/JIT/GC/scheduling cause remains unproven. Fine-grained temporary instrumentation isolated 6.123 ms in first face retirement with no gen-0 collection. Isolated startup preparation removed the reproduced first-use spike; it supplies no live collision evidence. Temporary profiling was removed. Final .10: 3374/3374 supported updates/submissions across two visual probes; fresh-reload 32-second capture 1655/1655. A distinct pre-fix center-query refusal coincided with GC; arbitrary pauses remain possible.",
+      "status": "first_retirement_stall_mitigated_live_other_pauses_and_broader_motion_pending"
     }
   ],
   "nextRuntimeChecks": [
-    "Investigate the early layer-maintenance delay (6.309 ms versus 0.024 ms player query), separating work, JIT, GC and scheduling; retain current geometry acceptance and deadline bounds",
-    "Exercise movement, stairs, jumping, UI occlusion and zone transitions using measured support and actual display evidence",
+    "Exercise actual walking, stairs, jumping and zone transitions; prepared final candidate passes visual-target probes but does not move the player",
+    "Profile other deadline stalls and allocation pressure; a pre-fix center discovery refusal coincided with GC, and initialization peaks remain observable",
     "Check resource lifecycle, frame costs, allocation pressure and Rug errors during a sustained run",
     "Validate canonical installation/startup and reload recovery with only one Rug/FloorMap copy enabled before promoting the candidate"
   ],

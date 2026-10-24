@@ -92,6 +92,7 @@ internal sealed unsafe class ClothContactSampler : IClothSupportQueries, IIncrem
 
     public ClothContactSampler()
     {
+        LocalFloorLayer.PrepareMaintenance();
         withinDeadline = () => Stopwatch.GetElapsedTime(queryStarted).TotalMilliseconds < QueryBudgetMilliseconds;
         castClearance = CastClearance;
     }

@@ -32,4 +32,7 @@ The ten-second map outage probe retained woven rendering and restored the curren
 
 This candidate also includes the preceding shared-edge float-spacing correction, atomic cloth publication, bounded foot-submission guards and map-independent woven material. Timestamped MCP geometry and render counters distinguish supported meshes from actual submission attempts without depending on an uncapped log file.
 
-The public testing release remains 0.0.1.3 while the candidate receives further lifecycle and movement validation. XivRug retains development FloorMap compatibility. Keep only one Rug/FloorMap copy enabled.
+The public testing release remains 0.0.1.3 while the candidate receives further lifecycle and movement validation. XivRug is the sole plugin, assembly and saved-configuration identity.
+
+
+The 0.0.1.13 candidate removes the alternate development identity and its configuration shim. Existing settings must be migrated to the XivRug configuration type before loading this build.

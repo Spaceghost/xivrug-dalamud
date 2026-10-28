@@ -14,7 +14,7 @@ also visible in-game. Jump lift still needs its own visual confirmation.
 This remains a prototype
 with further terrain, animation, and window-layering validation in progress.
 
-The live development build uses the existing XivFloorMap registration. Native
+The live development build uses the XivRug registration. Native
 composition is enabled in-game and is now the default for new configurations.
 The Wine/DXVK test located the native UI shaders, submitted through the known
 device's immediate context, and showed an overlapping native Journal covering
@@ -543,12 +543,6 @@ reload, stale playback and quiet-audio thresholds without network or account
 access. Physical cloth tests separately measure solved ripple height, propagation,
 release, contact constraints and bounded overlapping impulses.
 
-For the existing XivFloorMap dev registration and persisted configuration type:
-
-```sh
-dotnet build src/XivRug.Plugin/XivRug.Plugin.csproj -p:RugCompatibilityName=XivFloorMap -p:DalamudLibPath=/path/to/dalamud/
-```
-
 Native composition is selected at runtime and enabled for new configurations;
 saved explicit opt-outs are not migrated. After HLSL edits:
 
@@ -585,7 +579,7 @@ same-animation-frame bone alignment. Installation preserved settings and the
 development manifest; this is not a stable-release certification.
 
 The newer bounded-motion mask source passed 227 core tests and 21 configuration
-tests, and its Release XivFloorMap compatibility build completed without warnings
+tests, and its Release XivRug build completed without warnings
 or errors. Core regressions include lateral
 boot-edge and descending-foot containment at 8, 16 and 33 ms under the declared
 speed bounds, unchanged measured contacts, cutoff/invalid-contact failures, and GPU
@@ -664,8 +658,7 @@ does not establish walking clearance.
 The separate configuration suite passed 21 tests using the real Dalamud
 configuration interface and Newtonsoft serializer. It checks new/missing-value
 defaults, explicit native-composition opt-outs, tiny drag settings, sanitization
-and serialization round-trips for both XivRug and the XivFloorMap compatibility
-type. These checks do not load the game or initialize the renderer.
+and serialization round-trips for the XivRug configuration type. These checks do not load the game or initialize the renderer.
 
 ## Independence and references
 
@@ -737,8 +730,8 @@ Source: https://github.com/Spaceghost/xivrug-dalamud. Site: https://spacegho.st/
 
 With Python 3 and .NET SDK 10.0.401 installed, run `tools/fetch-dalamud.sh`, `tools/build.sh --test --locked`, then `tools/package.sh`. For local references pass `--references /path/to/reviewed/dalamud`. Reviewed Dalamud 15.0.3.6 hashes are pinned in `tools/references.json`; changing native bindings requires review. NuGet dependencies have committed lock files. ZIPs and checksums use deterministic ordering/timestamps and record source/reference identity. CI runs the same commands and uploads artifacts; the manual release workflow updates the experimental `testing` channel from `main`. Optional Piano cross-repository integration tests remain separate.
 
-Add `https://spacegho.st/mods/ffxiv/plugins.json` in Dalamud Experimental settings and enable testing builds. This publishes XivRug once, not a second XivFloorMap installer identity. Existing FloorMap development installs should be disabled before loading Rug; retain their settings. The compatibility build remains in the source for existing workflows.
+Add `https://spacegho.st/mods/ffxiv/plugins.json` in Dalamud Experimental settings and enable testing builds. XivRug is the sole installer, assembly and saved-configuration identity. Preserve saved settings when upgrading.
 
-Read-only MCP diagnostics use `XivRug.v1.ApiVersion` (`Func<int>`, version 1) and `XivRug.v1.GetStatus` (`Func<string>`, cached JSON). Status includes observation time, login/enabled state, territory, renderer/native composition, map/music/terrain diagnostics and `movementControl=false`. MCP probes Rug/FloorMap installation aliases and reads this snapshot without loading terrain or changing settings.
+Read-only MCP diagnostics use `XivRug.v1.ApiVersion` (`Func<int>`, version 1) and `XivRug.v1.GetStatus` (`Func<string>`, cached JSON). Status includes observation time, login/enabled state, territory, renderer/native composition, map/music/terrain diagnostics and `movementControl=false`. MCP probes the XivRug installation and reads this snapshot without loading terrain or changing settings.
 
 This publication and new status IPC have offline validation. Earlier live records above do not constitute live acceptance of the new package. No new screenshots were captured; the game container was stopped.

@@ -59,7 +59,7 @@
     "Exercise actual walking, stairs, jumping and zone transitions; prepared final candidate passes visual-target probes but does not move the player",
     "Observe a natural required-floor GC-pause allowance event and verify publication; retain long-pause refusal, original freshness/geometry checks and 8 ms admission ceiling",
     "Check resource lifecycle, frame costs, allocation pressure and Rug errors during a sustained run",
-    "Validate canonical installation/startup and reload recovery with only one Rug/FloorMap copy enabled before promoting the candidate"
+    "Validate canonical installation/startup and reload recovery with only one XivRug copy enabled before promoting the candidate"
   ],
   "releaseGate": "Keep the broader stability goal active until pending runtime checks have adequate evidence; do not treat green unit tests as live rendering certification"
 }

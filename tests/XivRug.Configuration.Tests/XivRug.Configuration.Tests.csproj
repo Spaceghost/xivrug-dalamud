@@ -22,7 +22,6 @@
     <Reference Include="Dalamud"><HintPath>$(DalamudLibPath)Dalamud.dll</HintPath></Reference>
     <Reference Include="Newtonsoft.Json"><HintPath>$(DalamudLibPath)Newtonsoft.Json.dll</HintPath></Reference>
     <Compile Include="../../src/XivRug.Plugin/Configuration.cs" Link="Configuration.cs" />
-    <Compile Include="../../src/XivRug.Plugin/LegacyConfiguration.cs" Link="LegacyConfiguration.cs" />
     <Using Include="Xunit" />
   </ItemGroup>
 </Project>

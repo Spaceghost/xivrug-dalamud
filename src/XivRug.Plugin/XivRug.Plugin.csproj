@@ -1,16 +1,9 @@
 <Project Sdk="Dalamud.NET.Sdk/15.0.0">
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
-    <AssemblyName Condition="'$(RugCompatibilityName)' == ''">XivRug</AssemblyName>
-    <AssemblyName Condition="'$(RugCompatibilityName)' == 'XivFloorMap'">XivFloorMap</AssemblyName>
-    <Version>0.0.1.12</Version>
+    <AssemblyName>XivRug</AssemblyName>
+    <Version>0.0.1.13</Version>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(RugCompatibilityName)' == 'XivFloorMap'">
-    <Name>XivRug (development compatibility build)</Name>
-    <Author>Johnneylee Jack Rollins</Author>
-    <Punchline>Depth-projected woven rug.</Punchline>
-    <Description>Live experimental rug compositor. Native UI ordering remains under development. No Ghostty dependency.</Description>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="TerraFX.Interop.Windows">

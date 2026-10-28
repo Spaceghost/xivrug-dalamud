@@ -96,13 +96,11 @@ public sealed class ConfigurationTests
     }
 
     [Theory]
-    [InlineData(true, false)]
-    [InlineData(false, false)]
-    [InlineData(true, true)]
-    [InlineData(false, true)]
-    public void RoundTripPreservesExplicitNativeSettingForBothConfigurationTypes(bool native, bool legacy)
+    [InlineData(true)]
+    [InlineData(false)]
+    public void RoundTripPreservesExplicitNativeSetting(bool native)
     {
-        Plugin.Configuration original = legacy ? new XivFloorMap.Plugin.Configuration() : new Plugin.Configuration();
+        var original = new Plugin.Configuration();
         original.NativeUiComposition = native;
         original.DragRadius = 0.2f;
         original.DragResponse = 0.08f;
